@@ -5,6 +5,8 @@ import {
   buildInputCommand,
   buildInputCommandSequence,
   escapeInputText,
+  isAndroidInputTextSafe,
+  isAdbKeyboardInstalled,
   keyToAndroidKeyCode,
   parsePngSize,
   resolveAppPackage,
@@ -124,6 +126,21 @@ describe('buildInputCommandSequence', () => {
 describe('escapeInputText', () => {
   it('escapes whitespace for Android input text', () => {
     expect(escapeInputText(' a  b ')).toBe('%sa%s%sb%s')
+  })
+
+  it('detects text that Android input text can type reliably', () => {
+    expect(isAndroidInputTextSafe('hello world 123')).toBe(true)
+    expect(isAndroidInputTextSafe('test@example.com')).toBe(true)
+    expect(isAndroidInputTextSafe('测试发送')).toBe(false)
+    expect(isAndroidInputTextSafe('hello\nworld')).toBe(false)
+    expect(isAndroidInputTextSafe('price is $5')).toBe(false)
+  })
+
+  it('detects whether ADB Keyboard is installed from ime list output', () => {
+    expect(
+      isAdbKeyboardInstalled(`com.android.inputmethod.latin/.LatinIME\ncom.android.adbkeyboard/.AdbIME`),
+    ).toBe(true)
+    expect(isAdbKeyboardInstalled('com.android.inputmethod.latin/.LatinIME')).toBe(false)
   })
 })
 

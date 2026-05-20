@@ -82,7 +82,7 @@ do(action="Launch", app="京东")
 - 启动应用：使用内置常见 App 名称映射，或直接传 Android 包名。
 - 长按：使用 Android `input swipe x y x y duration` 命令模拟。
 - 双击：连续发送两次 `tap`，中间带短延迟。
-- 文本输入：支持 Android `input text`，也支持 ADB Keyboard 广播模式。
+- 文本输入：简单 ASCII 文本使用 Android `input text`；中文和复杂字符会自动使用 ADB Keyboard 广播模式。
 - ADB Keyboard 模式要求设备上已安装 `com.android.adbkeyboard/.AdbIME`。
 
 ## 默认设置

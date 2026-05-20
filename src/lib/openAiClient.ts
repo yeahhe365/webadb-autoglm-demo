@@ -80,7 +80,7 @@ export function buildChatCompletionPayload({
           '{"action":"launch","app":"Settings|Chrome|YouTube|京东|package.name","reason":"short reason"}',
           '{"action":"tap","x":number,"y":number,"reason":"short reason"}',
           '{"action":"swipe","fromX":number,"fromY":number,"toX":number,"toY":number,"durationMs":number,"reason":"short reason"}',
-          '{"action":"input_text","text":"ASCII or simple text","reason":"short reason"}',
+          '{"action":"input_text","text":"Unicode text to type","reason":"short reason"}',
           '{"action":"key","key":"BACK|HOME|ENTER|POWER|APP_SWITCH|MENU","reason":"short reason"}',
           '{"action":"back","reason":"short reason"}',
           '{"action":"home","reason":"short reason"}',

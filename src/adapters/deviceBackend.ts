@@ -15,6 +15,7 @@ export type DeviceCommandStep = readonly string[] | { waitMs: number }
 
 export const AUTO_GLM_ACTION_SETTLE_DELAY_MS = 1000
 export const AUTO_GLM_DOUBLE_TAP_INTERVAL_MS = 100
+export const ADB_KEYBOARD_IME = 'com.android.adbkeyboard/.AdbIME'
 
 export type DeviceBackend = {
   connect(): Promise<DeviceInfo>
@@ -101,6 +102,14 @@ function withActionSettle(sequence: DeviceCommandStep[]): DeviceCommandStep[] {
 
 export function escapeInputText(text: string) {
   return text.replace(/\s/g, '%s')
+}
+
+export function isAndroidInputTextSafe(text: string) {
+  return /^[A-Za-z0-9 .,@_:+\\/-]+$/.test(text)
+}
+
+export function isAdbKeyboardInstalled(imeListOutput: string) {
+  return imeListOutput.split(/\s+/).includes(ADB_KEYBOARD_IME)
 }
 
 export function keyToAndroidKeyCode(key: KeyAction['key']) {

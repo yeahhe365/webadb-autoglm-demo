@@ -3,19 +3,20 @@ import AdbWebCredentialStore from '@yume-chan/adb-credential-web'
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb'
 import type { AgentAction } from '../lib/actions'
 import {
+  ADB_KEYBOARD_IME,
   AUTO_GLM_ACTION_SETTLE_DELAY_MS,
   buildInputCommandSequence,
   bytesToDataUrl,
   delay,
   DeviceBackendError,
+  isAdbKeyboardInstalled,
+  isAndroidInputTextSafe,
   parsePngSize,
   type DeviceCommandStep,
   type DeviceBackend,
   type DeviceInfo,
   type DeviceScreenshot,
 } from './deviceBackend'
-
-const ADB_KEYBOARD_IME = 'com.android.adbkeyboard/.AdbIME'
 
 export class WebAdbDeviceBackend implements DeviceBackend {
   #adb: Adb | null = null
@@ -93,11 +94,8 @@ export class WebAdbDeviceBackend implements DeviceBackend {
       return action.summary || 'Task completed.'
     }
 
-    if (action.action === 'input_text' && this.#preferAdbKeyboard) {
-      const command = ['am', 'broadcast', '-a', 'ADB_INPUT_TEXT', '--es', 'msg', action.text]
-      await this.#requireAdb().subprocess.noneProtocol.spawnWait(command)
-      await delay(AUTO_GLM_ACTION_SETTLE_DELAY_MS)
-      return command.join(' ')
+    if (action.action === 'input_text' && (this.#preferAdbKeyboard || !isAndroidInputTextSafe(action.text))) {
+      return await this.#inputTextWithAdbKeyboard(action.text)
     }
 
     const sequence = buildInputCommandSequence(action)
@@ -116,6 +114,7 @@ export class WebAdbDeviceBackend implements DeviceBackend {
 
   async enableAdbKeyboard(): Promise<string> {
     const adb = this.#requireAdb()
+    await this.#assertAdbKeyboardInstalled()
     const enable = await adb.subprocess.noneProtocol.spawnWaitText(['ime', 'enable', ADB_KEYBOARD_IME])
     const set = await adb.subprocess.noneProtocol.spawnWaitText(['ime', 'set', ADB_KEYBOARD_IME])
     this.#preferAdbKeyboard = true
@@ -133,6 +132,35 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     }
 
     await this.#requireAdb().subprocess.noneProtocol.spawnWait(step)
+  }
+
+  async #inputTextWithAdbKeyboard(text: string) {
+    const adb = this.#requireAdb()
+    await this.#assertAdbKeyboardInstalled()
+
+    try {
+      await adb.subprocess.noneProtocol.spawnWaitText(['ime', 'enable', ADB_KEYBOARD_IME])
+      await adb.subprocess.noneProtocol.spawnWaitText(['ime', 'set', ADB_KEYBOARD_IME])
+    } catch {
+      throw new DeviceBackendError(
+        'Chinese or complex text requires ADB Keyboard. Install com.android.adbkeyboard/.AdbIME on the device, then try again.',
+      )
+    }
+
+    const command = ['am', 'broadcast', '-a', 'ADB_INPUT_TEXT', '--es', 'msg', text]
+    await adb.subprocess.noneProtocol.spawnWait(command)
+    await delay(AUTO_GLM_ACTION_SETTLE_DELAY_MS)
+    this.#preferAdbKeyboard = true
+    return command.join(' ')
+  }
+
+  async #assertAdbKeyboardInstalled() {
+    const imeList = await this.#requireAdb().subprocess.noneProtocol.spawnWaitText(['ime', 'list', '-s'])
+    if (!isAdbKeyboardInstalled(imeList)) {
+      throw new DeviceBackendError(
+        'Chinese or complex text requires ADB Keyboard. Install com.android.adbkeyboard/.AdbIME on the device, then try again.',
+      )
+    }
   }
 
   #requireAdb() {
