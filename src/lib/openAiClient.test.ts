@@ -19,6 +19,7 @@ describe('buildChatCompletionPayload', () => {
       task: 'Open settings',
       screenshotDataUrl: 'data:image/png;base64,abc123',
       screen: { width: 1080, height: 2400 },
+      promptMode: 'canonical-json',
     })
 
     expect(payload).toMatchObject({
@@ -36,6 +37,73 @@ describe('buildChatCompletionPayload', () => {
         image_url: { url: 'data:image/png;base64,abc123' },
       },
     ])
+  })
+
+  it('includes current app and previous step history in the user context', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'agent-model',
+      task: 'Open settings',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 1080, height: 2400 },
+      currentApp: 'Chrome',
+      deviceState: {
+        app: 'Chrome',
+        packageName: 'com.android.chrome',
+        activity: 'com.google.android.apps.chrome.Main',
+        orientation: 'portrait',
+        keyboard: 'com.android.adbkeyboard/.AdbIME',
+      },
+      promptMode: 'canonical-json',
+      history: [
+        {
+          step: 1,
+          currentApp: 'System Home',
+          actionPreview: 'launch Chrome',
+          executionResult: 'monkey -p com.android.chrome',
+        },
+      ],
+    })
+
+    const userMessage = payload.messages[1]
+    expect(userMessage.role).toBe('user')
+    if (userMessage.role !== 'user' || userMessage.content[0].type !== 'text') {
+      throw new Error('Expected first user content item to be text.')
+    }
+    const userText = userMessage.content[0].text
+    expect(userText).toContain('"current_app":"Chrome"')
+    expect(userText).toContain('"package_name":"com.android.chrome"')
+    expect(userText).toContain('"activity":"com.google.android.apps.chrome.Main"')
+    expect(userText).toContain('"keyboard":"com.android.adbkeyboard/.AdbIME"')
+    expect(userText).toContain('Step 1')
+    expect(userText).toContain('launch Chrome')
+    expect(userText).toContain('monkey -p com.android.chrome')
+  })
+
+  it('enables streaming when requested by the model config', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'agent-model',
+      task: 'Open settings',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 1080, height: 2400 },
+      promptMode: 'canonical-json',
+      stream: true,
+    })
+
+    expect(payload.stream).toBe(true)
+  })
+
+  it('uses Open-AutoGLM native mode without forcing JSON response format', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'autoglm-phone',
+      task: '打开京东',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 1080, height: 2400 },
+      promptMode: 'autoglm-native',
+    })
+
+    expect(payload.response_format).toBeUndefined()
+    expect(payload.messages[0].content).toContain('do(action="Launch"')
+    expect(payload.messages[0].content).toContain('finish(message=')
   })
 })
 
@@ -68,6 +136,7 @@ describe('createOpenAiClient', () => {
       task: 'Finish',
       screenshotDataUrl: 'data:image/png;base64,abc123',
       screen: { width: 10, height: 20 },
+      promptMode: 'canonical-json',
     })
 
     expect(text).toBe('{"action":"done"}')
@@ -81,5 +150,44 @@ describe('createOpenAiClient', () => {
         },
       }),
     )
+  })
+
+  it('aggregates streamed chat completion chunks', async () => {
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"choices":[{"delta":{"content":"{\\"action\\":"}}]}\n\n',
+              'data: {"choices":[{"delta":{"content":"\\"done\\"}"}}]}\n\n',
+              'data: [DONE]\n\n',
+            ].join(''),
+          ),
+        )
+        controller.close()
+      },
+    })
+    const fetcher = vi.fn(async () => ({
+      ok: true,
+      body,
+      json: async () => {
+        throw new Error('streaming responses should not be read as JSON')
+      },
+    })) as unknown as typeof fetch
+    const client = createOpenAiClient(fetcher)
+
+    const text = await client.completeAction({
+      baseUrl: 'https://api.example.com/v1/',
+      apiKey: 'secret',
+      model: 'agent-model',
+      stream: true,
+      task: 'Finish',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 10, height: 20 },
+      promptMode: 'canonical-json',
+    })
+
+    expect(text).toBe('{"action":"done"}')
   })
 })

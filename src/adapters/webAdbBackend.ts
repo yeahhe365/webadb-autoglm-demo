@@ -3,7 +3,8 @@ import AdbWebCredentialStore from '@yume-chan/adb-credential-web'
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb'
 import type { AgentAction } from '../lib/actions'
 import {
-  AUTO_GLM_ACTION_SETTLE_DELAY_MS,
+  DEFAULT_DEVICE_TIMING,
+  assertSensitiveActionConfirmed,
   buildInputCommandSequence,
   bytesToDataUrl,
   delay,
@@ -11,17 +12,22 @@ import {
   encodeAdbKeyboardText,
   findAdbKeyboardIme,
   isAndroidInputTextSafe,
+  parseDeviceStateFromDumpsys,
   parsePngSize,
   type DeviceCommandStep,
   type DeviceBackend,
   type DeviceInfo,
   type DeviceScreenshot,
+  type DeviceState,
+  type DeviceTimingConfig,
+  type ExecuteActionOptions,
 } from './deviceBackend'
 
 export class WebAdbDeviceBackend implements DeviceBackend {
   #adb: Adb | null = null
   #deviceInfo: DeviceInfo | null = null
   #preferAdbKeyboard = false
+  #timing: DeviceTimingConfig = DEFAULT_DEVICE_TIMING
 
   get isConnected() {
     return this.#adb !== null
@@ -76,7 +82,23 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     }
   }
 
-  async execute(action: AgentAction): Promise<string> {
+  async getCurrentApp(): Promise<string> {
+    return (await this.getDeviceState()).app
+  }
+
+  async getDeviceState(): Promise<DeviceState> {
+    const adb = this.#requireAdb()
+    const [windowOutput, keyboard] = await Promise.all([
+      adb.subprocess.noneProtocol.spawnWaitText(['dumpsys', 'window']),
+      this.#getCurrentInputMethod().catch(() => undefined),
+    ])
+    return {
+      ...parseDeviceStateFromDumpsys(windowOutput),
+      ...(keyboard ? { keyboard } : {}),
+    }
+  }
+
+  async execute(action: AgentAction, options?: ExecuteActionOptions): Promise<string> {
     if (action.action === 'wait') {
       await delay(action.ms)
       return `Waited ${action.ms}ms.`
@@ -98,7 +120,9 @@ export class WebAdbDeviceBackend implements DeviceBackend {
       return await this.#inputTextWithAdbKeyboard(action.text)
     }
 
-    const sequence = buildInputCommandSequence(action)
+    await assertSensitiveActionConfirmed(action, options)
+
+    const sequence = buildInputCommandSequence(action, this.#timing)
     if (sequence.length === 0) {
       return 'No device command required.'
     }
@@ -125,6 +149,10 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     this.#preferAdbKeyboard = value
   }
 
+  setTimingConfig(value: DeviceTimingConfig) {
+    this.#timing = value
+  }
+
   async #executeCommandStep(step: DeviceCommandStep) {
     if (isWaitStep(step)) {
       await delay(step.waitMs)
@@ -147,15 +175,15 @@ export class WebAdbDeviceBackend implements DeviceBackend {
       executed.push(`ime set ${keyboardIme}`)
       await this.#sendAdbKeyboardText('')
       executed.push('am broadcast -a ADB_INPUT_B64 --es msg <empty>')
-      await delay(AUTO_GLM_ACTION_SETTLE_DELAY_MS)
+      await delay(this.#timing.keyboardStepMs)
 
       await adb.subprocess.noneProtocol.spawnWait(['am', 'broadcast', '-a', 'ADB_CLEAR_TEXT'])
       executed.push('am broadcast -a ADB_CLEAR_TEXT')
-      await delay(AUTO_GLM_ACTION_SETTLE_DELAY_MS)
+      await delay(this.#timing.keyboardStepMs)
 
       const command = await this.#sendAdbKeyboardText(text)
       executed.push(command.join(' '))
-      await delay(AUTO_GLM_ACTION_SETTLE_DELAY_MS)
+      await delay(this.#timing.keyboardStepMs)
     } catch {
       throw new DeviceBackendError(
         'ADB Keyboard or AutoGLM Keyboard was detected but did not accept the text broadcast. Re-enable the keyboard on the device, then try again.',
@@ -163,7 +191,7 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     } finally {
       if (originalIme && originalIme !== keyboardIme) {
         await adb.subprocess.noneProtocol.spawnWaitText(['ime', 'set', originalIme])
-        await delay(AUTO_GLM_ACTION_SETTLE_DELAY_MS)
+        await delay(this.#timing.keyboardStepMs)
       }
     }
 

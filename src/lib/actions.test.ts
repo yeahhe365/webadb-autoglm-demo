@@ -26,7 +26,7 @@ describe('parseModelAction', () => {
 
   it('normalizes Open-AutoGLM JSON actions with relative element coordinates', () => {
     const action = parseModelAction(
-      '{"_metadata":"do","action":"Tap","element":[500,100],"thought":"press search"}',
+      '{"_metadata":"do","action":"Tap","element":[500,100],"thought":"press search","message":"重要操作"}',
       screen,
     )
 
@@ -35,6 +35,7 @@ describe('parseModelAction', () => {
       x: 540,
       y: 240,
       reason: 'press search',
+      message: '重要操作',
     })
   })
 
@@ -44,6 +45,26 @@ describe('parseModelAction', () => {
     expect(action).toEqual({
       action: 'launch',
       app: '京东',
+    })
+  })
+
+  it('parses Open-AutoGLM finish function style actions', () => {
+    const action = parseModelAction('<think>完成了</think><answer>finish(message="已完成任务")</answer>')
+
+    expect(action).toEqual({
+      action: 'done',
+      summary: '已完成任务',
+    })
+  })
+
+  it('parses Open-AutoGLM Interact and Call_API actions', () => {
+    expect(parseModelAction('do(action="Interact", message="请选择联系人")', screen)).toEqual({
+      action: 'interact',
+      message: '请选择联系人',
+    })
+    expect(parseModelAction('do(action="Call_API", instruction="总结已记录页面")', screen)).toEqual({
+      action: 'call_api',
+      instruction: '总结已记录页面',
     })
   })
 })
@@ -86,6 +107,27 @@ describe('validateAction', () => {
     )
   })
 
+  it('preserves sensitive tap metadata for confirmation before execution', () => {
+    expect(
+      validateAction(
+        {
+          action: 'tap',
+          x: 100,
+          y: 200,
+          message: '确认支付',
+          risk: 'sensitive',
+        },
+        screen,
+      ),
+    ).toEqual({
+      action: 'tap',
+      x: 100,
+      y: 200,
+      message: '确认支付',
+      risk: 'sensitive',
+    })
+  })
+
   it('supports Open-AutoGLM Launch, Type, Back, Home, Long Press, Double Tap, and Take_over', () => {
     expect(validateAction({ action: 'Launch', app: 'Settings' }, screen)).toEqual({
       action: 'launch',
@@ -111,6 +153,10 @@ describe('validateAction', () => {
     expect(validateAction({ action: 'Take_over', message: 'login required' }, screen)).toEqual({
       action: 'take_over',
       message: 'login required',
+    })
+    expect(validateAction({ action: 'Note', message: 'record page' }, screen)).toEqual({
+      action: 'note',
+      message: 'record page',
     })
   })
 
@@ -145,6 +191,12 @@ describe('buildActionPreview', () => {
     expect(buildActionPreview({ action: 'launch', app: 'Settings' })).toBe('launch Settings')
     expect(buildActionPreview({ action: 'take_over', message: 'captcha' })).toBe(
       'take over: captcha',
+    )
+    expect(buildActionPreview({ action: 'interact', message: 'choose one' })).toBe(
+      'interact: choose one',
+    )
+    expect(buildActionPreview({ action: 'call_api', instruction: 'summarize' })).toBe(
+      'call api: summarize',
     )
   })
 })

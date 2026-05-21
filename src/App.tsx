@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   CircleStop,
+  Download,
   KeyRound,
   Link,
   Loader2,
@@ -10,16 +11,25 @@ import {
   RotateCcw,
   ScanEye,
   StepForward,
+  Trash2,
   Usb,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
-import type { DeviceInfo, DeviceScreenshot } from './adapters/deviceBackend'
+import type { DeviceInfo, DeviceScreenshot, DeviceState } from './adapters/deviceBackend'
 import { WebAdbDeviceBackend, isWebUsbSupported } from './adapters/webAdbBackend'
 import type { AgentAction } from './lib/actions'
 import { buildActionPreview } from './lib/actions'
-import { createAgentRunner, runAgentStep, type AgentStep } from './lib/agent'
+import {
+  createAgentRunner,
+  createAgentSession,
+  recordAgentStep,
+  runAgentStep,
+  type AgentSession,
+  type AgentStep,
+} from './lib/agent'
 import { createOpenAiClient, type ModelConfig } from './lib/openAiClient'
+import type { PromptMode } from './lib/prompts'
 import { loadSettings, saveSettings } from './lib/settings'
 
 type LogEntry = {
@@ -33,6 +43,7 @@ type LogEntry = {
 function App() {
   const abortRef = useRef<AbortController | null>(null)
   const settings = useMemo(() => loadSettings(), [])
+  const sessionRef = useRef<AgentSession>(createAgentSession(settings.task))
   const [backend] = useState(() => new WebAdbDeviceBackend())
   const client = useMemo(() => createOpenAiClient(), [])
   const [modelConfig, setModelConfig] = useState<ModelConfig>(settings.modelConfig)
@@ -40,7 +51,17 @@ function App() {
   const [maxSteps, setMaxSteps] = useState(settings.maxSteps)
   const [autoExecute, setAutoExecute] = useState(settings.autoExecute)
   const [preferAdbKeyboard, setPreferAdbKeyboard] = useState(settings.preferAdbKeyboard)
+  const [promptMode, setPromptMode] = useState<PromptMode>(settings.promptMode)
+  const [confirmSensitiveActions, setConfirmSensitiveActions] = useState(
+    settings.confirmSensitiveActions,
+  )
+  const [streamResponses, setStreamResponses] = useState(settings.streamResponses)
+  const [actionSettleMs, setActionSettleMs] = useState(settings.actionSettleMs)
+  const [doubleTapIntervalMs, setDoubleTapIntervalMs] = useState(settings.doubleTapIntervalMs)
+  const [keyboardStepMs, setKeyboardStepMs] = useState(settings.keyboardStepMs)
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null)
+  const [currentApp, setCurrentApp] = useState<string>('Unknown')
+  const [deviceState, setDeviceState] = useState<DeviceState>({ app: 'Unknown' })
   const [screenshot, setScreenshot] = useState<DeviceScreenshot | null>(null)
   const [pendingStep, setPendingStep] = useState<AgentStep | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -54,9 +75,13 @@ function App() {
       ? 'Acknowledge'
       : pendingStep?.action.action === 'note'
         ? 'Acknowledge'
-        : pendingStep?.action.action === 'done'
-          ? 'Finish'
-          : 'Execute'
+        : pendingStep?.action.action === 'interact'
+          ? 'Acknowledge'
+          : pendingStep?.action.action === 'call_api'
+            ? 'Acknowledge'
+            : pendingStep?.action.action === 'done'
+              ? 'Finish'
+              : 'Execute'
 
   useEffect(() => {
     saveSettings({
@@ -65,17 +90,49 @@ function App() {
       maxSteps,
       autoExecute,
       preferAdbKeyboard,
+      promptMode,
+      confirmSensitiveActions,
+      streamResponses,
+      actionSettleMs,
+      doubleTapIntervalMs,
+      keyboardStepMs,
     })
-  }, [autoExecute, maxSteps, modelConfig, preferAdbKeyboard, task])
+  }, [
+    actionSettleMs,
+    autoExecute,
+    confirmSensitiveActions,
+    doubleTapIntervalMs,
+    keyboardStepMs,
+    maxSteps,
+    modelConfig,
+    preferAdbKeyboard,
+    promptMode,
+    streamResponses,
+    task,
+  ])
 
   useEffect(() => {
     backend.setPreferAdbKeyboard(preferAdbKeyboard)
   }, [backend, preferAdbKeyboard])
 
+  useEffect(() => {
+    backend.setTimingConfig({
+      actionSettleMs,
+      doubleTapIntervalMs,
+      keyboardStepMs,
+    })
+  }, [actionSettleMs, backend, doubleTapIntervalMs, keyboardStepMs])
+
   function updateConfig<Key extends keyof ModelConfig>(key: Key, value: ModelConfig[Key]) {
     setModelConfig((current) => {
       return { ...current, [key]: value }
     })
+  }
+
+  function updateTask(value: string) {
+    sessionRef.current = createAgentSession(value)
+    setTask(value)
+    setPendingStep(null)
   }
 
   function addLog(entry: Omit<LogEntry, 'id' | 'time'>) {
@@ -91,6 +148,72 @@ function App() {
       },
       ...current,
     ])
+  }
+
+  function ensureSession() {
+    if (sessionRef.current.task !== task) {
+      sessionRef.current = createAgentSession(task)
+    }
+    return sessionRef.current
+  }
+
+  function resetSession() {
+    sessionRef.current = createAgentSession(task)
+    setPendingStep(null)
+    addLog({ tone: 'info', title: 'Agent context reset' })
+  }
+
+  function clearRunLog() {
+    setLogs([])
+  }
+
+  function confirmSensitiveAction(message: string) {
+    if (!confirmSensitiveActions) {
+      return true
+    }
+
+    return window.confirm(`Sensitive action requested:\n\n${message}\n\nExecute it?`)
+  }
+
+  function formatStepDetail(step: AgentStep) {
+    return [
+      `Current app: ${step.currentApp}`,
+      `Timing: capture ${step.timing.captureMs}ms, app ${step.timing.currentAppMs}ms, model ${step.timing.modelMs}ms, parse ${step.timing.parseMs}ms, total ${step.timing.totalMs}ms`,
+      step.modelOutput,
+    ].join('\n\n')
+  }
+
+  function exportRunLog() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      device: deviceInfo,
+      currentApp,
+      deviceState,
+      model: {
+        ...modelConfig,
+        apiKey: modelConfig.apiKey ? '<redacted>' : '',
+      },
+      promptMode,
+      streamResponses,
+      timing: {
+        actionSettleMs,
+        doubleTapIntervalMs,
+        keyboardStepMs,
+      },
+      autoExecute,
+      maxSteps,
+      task,
+      session: sessionRef.current,
+      logs,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `webadb-autoglm-run-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    addLog({ tone: 'ok', title: 'Run log exported' })
   }
 
   async function runTask(label: string, action: () => Promise<void>) {
@@ -119,6 +242,8 @@ function App() {
     await runTask('Disconnect device', async () => {
       await backend.disconnect()
       setDeviceInfo(null)
+      setCurrentApp('Unknown')
+      setDeviceState({ app: 'Unknown' })
       setScreenshot(null)
       setPendingStep(null)
       addLog({ tone: 'info', title: 'Device disconnected' })
@@ -128,11 +253,14 @@ function App() {
   async function captureScreen() {
     await runTask('Capture screen', async () => {
       const nextScreenshot = await backend.screenshot()
+      const nextDeviceState = await backend.getDeviceState()
       setScreenshot(nextScreenshot)
+      setCurrentApp(nextDeviceState.app)
+      setDeviceState(nextDeviceState)
       addLog({
         tone: 'ok',
         title: 'Screen captured',
-        detail: `${nextScreenshot.screen.width}x${nextScreenshot.screen.height}`,
+        detail: `${nextScreenshot.screen.width}x${nextScreenshot.screen.height}\n${formatDeviceState(nextDeviceState)}`,
       })
     })
   }
@@ -155,13 +283,17 @@ function App() {
       const step = await runAgentStep({
         device: backend,
         client,
-        modelConfig,
+        modelConfig: { ...modelConfig, stream: streamResponses },
         task,
+        promptMode,
+        session: ensureSession(),
         index: logs.length + 1,
       })
       setScreenshot(step.screenshot)
+      setCurrentApp(step.currentApp)
+      setDeviceState(step.deviceState)
       setPendingStep(step)
-      addLog({ tone: 'info', title: `Step ${step.index}: ${step.preview}`, detail: step.modelOutput })
+      addLog({ tone: 'info', title: `Step ${step.index}: ${step.preview}`, detail: formatStepDetail(step) })
     })
   }
 
@@ -172,12 +304,14 @@ function App() {
 
     await runTask('Execute action', async () => {
       if (pendingStep.action.action === 'done') {
+        recordAgentStep(ensureSession(), pendingStep)
         addLog({ tone: 'ok', title: 'Task complete', detail: pendingStep.action.summary })
         setPendingStep(null)
         return
       }
 
-      const result = await backend.execute(pendingStep.action)
+      const result = await backend.execute(pendingStep.action, { confirmSensitiveAction })
+      recordAgentStep(ensureSession(), pendingStep, result)
       addLog({ tone: 'ok', title: `Executed ${pendingStep.preview}`, detail: result })
       setPendingStep(null)
     })
@@ -186,19 +320,25 @@ function App() {
   async function runAutoLoop() {
     const controller = new AbortController()
     abortRef.current = controller
+    sessionRef.current = createAgentSession(task)
 
     await runTask('Run agent', async () => {
       const runner = createAgentRunner({ device: backend, client })
       const result = await runner.run({
-        modelConfig,
+        modelConfig: { ...modelConfig, stream: streamResponses },
         task,
+        promptMode,
         autoExecute: true,
         maxSteps,
+        session: sessionRef.current,
         signal: controller.signal,
+        confirmSensitiveAction,
         onStep: (step) => {
           setScreenshot(step.screenshot)
+          setCurrentApp(step.currentApp)
+          setDeviceState(step.deviceState)
           setPendingStep(step.action.action === 'done' ? null : step)
-          addLog({ tone: 'info', title: `Step ${step.index}: ${step.preview}`, detail: step.modelOutput })
+          addLog({ tone: 'info', title: `Step ${step.index}: ${step.preview}`, detail: formatStepDetail(step) })
         },
         onExecuted: (step, commandResult) => {
           addLog({ tone: 'ok', title: `Executed ${step.preview}`, detail: commandResult })
@@ -216,6 +356,9 @@ function App() {
       }
       if (result.status === 'awaiting_takeover') {
         addLog({ tone: 'warn', title: 'Manual takeover requested' })
+      }
+      if (result.status === 'loop_guard') {
+        addLog({ tone: 'warn', title: 'Loop guard stopped the run', detail: result.reason })
       }
       if (result.status !== 'awaiting_takeover') {
         setPendingStep(null)
@@ -243,6 +386,10 @@ function App() {
           <span className={connected ? 'status ok' : 'status'}>
             <Activity size={16} />
             {connected ? 'connected' : 'idle'}
+          </span>
+          <span className="status">
+            <ScanEye size={16} />
+            {currentApp}
           </span>
         </div>
       </header>
@@ -285,6 +432,24 @@ function App() {
               placeholder="vision-model"
             />
           </label>
+          <label>
+            Prompt mode
+            <select
+              value={promptMode}
+              onChange={(event) => setPromptMode(event.target.value as PromptMode)}
+            >
+              <option value="canonical-json">Canonical JSON</option>
+              <option value="autoglm-native">AutoGLM native</option>
+            </select>
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={streamResponses}
+              onChange={(event) => setStreamResponses(event.target.checked)}
+            />
+            <span>Stream model responses</span>
+          </label>
 
           <div className="panel-title">
             <Usb size={18} />
@@ -293,6 +458,10 @@ function App() {
           <div className="device-box">
             <span>{deviceInfo?.name || 'No device'}</span>
             <small>{deviceInfo?.serial || 'USB debugging required'}</small>
+            <small>Current app: {currentApp}</small>
+            {deviceState.packageName ? <small>Package: {deviceState.packageName}</small> : null}
+            {deviceState.activity ? <small>Activity: {deviceState.activity}</small> : null}
+            {deviceState.keyboard ? <small>Keyboard: {deviceState.keyboard}</small> : null}
           </div>
           <div className="button-row">
             <button type="button" onClick={connectDevice} disabled={Boolean(busy) || connected}>
@@ -325,6 +494,49 @@ function App() {
             />
             <span>Use ADB Keyboard for text</span>
           </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={confirmSensitiveActions}
+              onChange={(event) => setConfirmSensitiveActions(event.target.checked)}
+            />
+            <span>Confirm sensitive taps</span>
+          </label>
+          <div className="timing-grid">
+            <label>
+              Action settle (ms)
+              <input
+                type="number"
+                min={100}
+                max={5000}
+                step={50}
+                value={actionSettleMs}
+                onChange={(event) => setActionSettleMs(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              Double tap interval (ms)
+              <input
+                type="number"
+                min={20}
+                max={1000}
+                step={5}
+                value={doubleTapIntervalMs}
+                onChange={(event) => setDoubleTapIntervalMs(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              Keyboard step (ms)
+              <input
+                type="number"
+                min={100}
+                max={5000}
+                step={50}
+                value={keyboardStepMs}
+                onChange={(event) => setKeyboardStepMs(Number(event.target.value))}
+              />
+            </label>
+          </div>
           <div className="capability-grid" aria-label="Supported actions">
             {[
               'Launch',
@@ -366,14 +578,14 @@ function App() {
           </div>
           <label>
             Goal
-            <textarea value={task} onChange={(event) => setTask(event.target.value)} rows={5} />
+            <textarea value={task} onChange={(event) => updateTask(event.target.value)} rows={5} />
           </label>
           <label>
             Max steps
             <input
               type="number"
               min={1}
-              max={30}
+              max={200}
               value={maxSteps}
               onChange={(event) => setMaxSteps(Number(event.target.value))}
             />
@@ -400,6 +612,16 @@ function App() {
             <CircleStop size={16} />
             Stop
           </button>
+          <div className="button-row">
+            <button type="button" onClick={resetSession} disabled={Boolean(busy)}>
+              <RotateCcw size={16} />
+              Reset
+            </button>
+            <button type="button" onClick={exportRunLog} disabled={logs.length === 0}>
+              <Download size={16} />
+              Export
+            </button>
+          </div>
 
           <div className="pending-action">
             <div className="pending-header">
@@ -416,9 +638,15 @@ function App() {
       </section>
 
       <section className="log-section">
-        <div className="panel-title">
-          <RotateCcw size={18} />
-          <h2>Run Log</h2>
+        <div className="panel-title log-title">
+          <span>
+            <RotateCcw size={18} />
+            <h2>Run Log</h2>
+          </span>
+          <button type="button" onClick={clearRunLog} disabled={logs.length === 0}>
+            <Trash2 size={16} />
+            Clear
+          </button>
         </div>
         <div className="log-list">
           {logs.length === 0 ? <p className="muted">No events yet</p> : null}
@@ -433,6 +661,18 @@ function App() {
       </section>
     </main>
   )
+}
+
+function formatDeviceState(state: DeviceState) {
+  return [
+    `Current app: ${state.app}`,
+    state.packageName ? `Package: ${state.packageName}` : null,
+    state.activity ? `Activity: ${state.activity}` : null,
+    state.orientation ? `Orientation: ${state.orientation}` : null,
+    state.keyboard ? `Keyboard: ${state.keyboard}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 function ActionOverlay({ action, screen }: { action: AgentAction; screen: { width: number; height: number } }) {

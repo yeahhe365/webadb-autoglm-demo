@@ -11,17 +11,43 @@ export type DeviceScreenshot = {
   screen: ScreenSize
 }
 
+export type DeviceState = {
+  app: string
+  packageName?: string
+  activity?: string
+  orientation?: 'portrait' | 'landscape' | 'unknown'
+  keyboard?: string
+}
+
 export type DeviceCommandStep = readonly string[] | { waitMs: number }
+
+export type ExecuteActionOptions = {
+  confirmSensitiveAction?: (message: string, action: AgentAction) => boolean | Promise<boolean>
+}
+
+export type DeviceTimingConfig = {
+  actionSettleMs: number
+  doubleTapIntervalMs: number
+  keyboardStepMs: number
+}
 
 export const AUTO_GLM_ACTION_SETTLE_DELAY_MS = 1000
 export const AUTO_GLM_DOUBLE_TAP_INTERVAL_MS = 100
+export const AUTO_GLM_KEYBOARD_STEP_DELAY_MS = 1000
 export const ADB_KEYBOARD_IME = 'com.android.adbkeyboard/.AdbIME'
+export const DEFAULT_DEVICE_TIMING: DeviceTimingConfig = {
+  actionSettleMs: AUTO_GLM_ACTION_SETTLE_DELAY_MS,
+  doubleTapIntervalMs: AUTO_GLM_DOUBLE_TAP_INTERVAL_MS,
+  keyboardStepMs: AUTO_GLM_KEYBOARD_STEP_DELAY_MS,
+}
 
 export type DeviceBackend = {
   connect(): Promise<DeviceInfo>
   disconnect(): Promise<void>
   screenshot(): Promise<DeviceScreenshot>
-  execute(action: AgentAction): Promise<string>
+  getCurrentApp(): Promise<string>
+  getDeviceState(): Promise<DeviceState>
+  execute(action: AgentAction, options?: ExecuteActionOptions): Promise<string>
 }
 
 export class DeviceBackendError extends Error {
@@ -37,7 +63,10 @@ export function buildInputCommand(action: AgentAction): readonly string[] | null
   return Array.isArray(first) ? first : null
 }
 
-export function buildInputCommandSequence(action: AgentAction): DeviceCommandStep[] {
+export function buildInputCommandSequence(
+  action: AgentAction,
+  timing: DeviceTimingConfig = DEFAULT_DEVICE_TIMING,
+): DeviceCommandStep[] {
   switch (action.action) {
     case 'launch': {
       const packageName = action.packageName ?? resolveAppPackage(action.app)
@@ -46,10 +75,10 @@ export function buildInputCommandSequence(action: AgentAction): DeviceCommandSte
       }
       return withActionSettle([
         ['monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'],
-      ])
+      ], timing)
     }
     case 'tap':
-      return withActionSettle([['input', 'tap', String(action.x), String(action.y)]])
+      return withActionSettle([['input', 'tap', String(action.x), String(action.y)]], timing)
     case 'swipe':
       return withActionSettle([
         [
@@ -61,15 +90,15 @@ export function buildInputCommandSequence(action: AgentAction): DeviceCommandSte
           String(action.toY),
           String(action.durationMs ?? 400),
         ],
-      ])
+      ], timing)
     case 'input_text':
-      return withActionSettle([['input', 'text', escapeInputText(action.text)]])
+      return withActionSettle([['input', 'text', escapeInputText(action.text)]], timing)
     case 'key':
-      return withActionSettle([['input', 'keyevent', keyToAndroidKeyCode(action.key)]])
+      return withActionSettle([['input', 'keyevent', keyToAndroidKeyCode(action.key)]], timing)
     case 'back':
-      return withActionSettle([['input', 'keyevent', 'KEYCODE_BACK']])
+      return withActionSettle([['input', 'keyevent', 'KEYCODE_BACK']], timing)
     case 'home':
-      return withActionSettle([['input', 'keyevent', 'KEYCODE_HOME']])
+      return withActionSettle([['input', 'keyevent', 'KEYCODE_HOME']], timing)
     case 'long_press':
       return withActionSettle([
         [
@@ -81,13 +110,15 @@ export function buildInputCommandSequence(action: AgentAction): DeviceCommandSte
           String(action.y),
           String(action.durationMs),
         ],
-      ])
+      ], timing)
     case 'double_tap':
       return withActionSettle([
         ['input', 'tap', String(action.x), String(action.y)],
-        { waitMs: AUTO_GLM_DOUBLE_TAP_INTERVAL_MS },
+        { waitMs: timing.doubleTapIntervalMs },
         ['input', 'tap', String(action.x), String(action.y)],
-      ])
+      ], timing)
+    case 'call_api':
+    case 'interact':
     case 'note':
     case 'take_over':
     case 'wait':
@@ -96,8 +127,11 @@ export function buildInputCommandSequence(action: AgentAction): DeviceCommandSte
   }
 }
 
-function withActionSettle(sequence: DeviceCommandStep[]): DeviceCommandStep[] {
-  return [...sequence, { waitMs: AUTO_GLM_ACTION_SETTLE_DELAY_MS }]
+function withActionSettle(
+  sequence: DeviceCommandStep[],
+  timing: DeviceTimingConfig,
+): DeviceCommandStep[] {
+  return [...sequence, { waitMs: timing.actionSettleMs }]
 }
 
 export function escapeInputText(text: string) {
@@ -157,6 +191,40 @@ export function keyToAndroidKeyCode(key: KeyAction['key']) {
   return keycodes[key]
 }
 
+export function getSensitiveActionMessage(action: AgentAction): string | null {
+  if (action.action !== 'tap') {
+    return null
+  }
+
+  if (action.message) {
+    return action.message
+  }
+
+  if (action.risk === 'sensitive') {
+    return `Sensitive tap at (${action.x}, ${action.y})`
+  }
+
+  return null
+}
+
+export async function assertSensitiveActionConfirmed(
+  action: AgentAction,
+  options?: ExecuteActionOptions,
+) {
+  const message = getSensitiveActionMessage(action)
+  if (!message) {
+    return
+  }
+
+  const confirmed = options?.confirmSensitiveAction
+    ? await options.confirmSensitiveAction(message, action)
+    : false
+
+  if (!confirmed) {
+    throw new DeviceBackendError(`Sensitive action blocked: ${message}`)
+  }
+}
+
 export function resolveAppPackage(app: string): string | undefined {
   const direct = app.trim()
   if (direct.includes('.')) {
@@ -164,6 +232,33 @@ export function resolveAppPackage(app: string): string | undefined {
   }
 
   return APP_PACKAGES[normalizeAppName(direct)]
+}
+
+export function parseCurrentAppFromDumpsys(output: string) {
+  const packageName = parseFocusedComponent(output)?.packageName
+  if (!packageName) {
+    return 'System Home'
+  }
+
+  return resolveAppNameFromPackage(packageName) ?? packageName
+}
+
+export function parseDeviceStateFromDumpsys(output: string): DeviceState {
+  const focus = parseFocusedComponent(output)
+  if (!focus) {
+    return { app: 'System Home', orientation: parseOrientation(output) }
+  }
+
+  return {
+    app: resolveAppNameFromPackage(focus.packageName) ?? focus.packageName,
+    packageName: focus.packageName,
+    activity: focus.activity,
+    orientation: parseOrientation(output),
+  }
+}
+
+export function resolveAppNameFromPackage(packageName: string) {
+  return APP_PACKAGE_NAMES[packageName]
 }
 
 export function parsePngSize(bytes: Uint8Array): ScreenSize {
@@ -246,8 +341,49 @@ const APP_PACKAGES: Record<string, string> = {
   网易云音乐: 'com.netease.cloudmusic',
 }
 
+const APP_PACKAGE_NAMES = Object.entries(APP_PACKAGES).reduce<Record<string, string>>(
+  (names, [name, packageName]) => {
+    names[packageName] = name
+    return names
+  },
+  {},
+)
+
 function normalizeAppName(value: string) {
   return value.toLowerCase().replace(/[\s._-]+/g, '')
+}
+
+function parseFocusedComponent(output: string): { packageName: string; activity?: string } | null {
+  const focusLines = output
+    .split('\n')
+    .filter((line) => line.includes('mCurrentFocus') || line.includes('mFocusedApp'))
+
+  for (const line of focusLines) {
+    const packageMatch = line.match(/\b([a-zA-Z][\w]*(?:\.[\w]+)+)\/([^\s}]+)/)
+    if (packageMatch) {
+      return {
+        packageName: packageMatch[1],
+        activity: packageMatch[2],
+      }
+    }
+  }
+
+  return null
+}
+
+function parseOrientation(output: string): DeviceState['orientation'] {
+  const match = output.match(/\bmCurrentAppOrientation=(-?\d+)/)
+  if (!match) {
+    return undefined
+  }
+
+  if (match[1] === '1') {
+    return 'portrait'
+  }
+  if (match[1] === '0') {
+    return 'landscape'
+  }
+  return 'unknown'
 }
 
 function readUInt32(bytes: Uint8Array, offset: number) {

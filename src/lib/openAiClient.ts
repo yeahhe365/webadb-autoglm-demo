@@ -1,15 +1,29 @@
+import type { DeviceState } from '../adapters/deviceBackend'
 import type { ScreenSize } from './actions'
+import { buildSystemPrompt, type PromptMode } from './prompts'
 
 export type ModelConfig = {
   baseUrl: string
   apiKey: string
   model: string
+  stream?: boolean
 }
 
 export type CompletionRequest = ModelConfig & {
   task: string
   screenshotDataUrl: string
   screen: ScreenSize
+  currentApp?: string
+  deviceState?: DeviceState
+  history?: readonly AgentHistoryItem[]
+  promptMode: PromptMode
+}
+
+export type AgentHistoryItem = {
+  step: number
+  currentApp?: string
+  actionPreview: string
+  executionResult?: string
 }
 
 type ChatMessage =
@@ -37,7 +51,8 @@ export type ChatCompletionPayload = {
   model: string
   temperature: number
   max_tokens: number
-  response_format: {
+  stream?: boolean
+  response_format?: {
     type: 'json_object'
   }
   messages: ChatMessage[]
@@ -63,47 +78,39 @@ export function buildChatCompletionPayload({
   task,
   screenshotDataUrl,
   screen,
-}: Pick<CompletionRequest, 'model' | 'task' | 'screenshotDataUrl' | 'screen'>): ChatCompletionPayload {
-  return {
+  currentApp,
+  deviceState,
+  history = [],
+  promptMode,
+  stream,
+}: Pick<
+  CompletionRequest,
+  | 'model'
+  | 'task'
+  | 'screenshotDataUrl'
+  | 'screen'
+  | 'currentApp'
+  | 'deviceState'
+  | 'history'
+  | 'promptMode'
+  | 'stream'
+>): ChatCompletionPayload {
+  const payload: ChatCompletionPayload = {
     model,
-    temperature: 0.1,
-    max_tokens: 600,
-    response_format: { type: 'json_object' },
+    temperature: promptMode === 'autoglm-native' ? 0 : 0.1,
+    max_tokens: promptMode === 'autoglm-native' ? 3000 : 800,
+    ...(stream ? { stream: true } : {}),
     messages: [
       {
         role: 'system',
-        content: [
-          'You are a phone-control agent for an Android device.',
-          'Inspect the screenshot and choose exactly one next action.',
-          'Return only one JSON object. No markdown, no prose.',
-          'Supported canonical JSON actions:',
-          '{"action":"launch","app":"Settings|Chrome|YouTube|京东|package.name","reason":"short reason"}',
-          '{"action":"tap","x":number,"y":number,"reason":"short reason"}',
-          '{"action":"swipe","fromX":number,"fromY":number,"toX":number,"toY":number,"durationMs":number,"reason":"short reason"}',
-          '{"action":"input_text","text":"Unicode text to type","reason":"short reason"}',
-          '{"action":"key","key":"BACK|HOME|ENTER|POWER|APP_SWITCH|MENU","reason":"short reason"}',
-          '{"action":"back","reason":"short reason"}',
-          '{"action":"home","reason":"short reason"}',
-          '{"action":"long_press","x":number,"y":number,"durationMs":number,"reason":"short reason"}',
-          '{"action":"double_tap","x":number,"y":number,"reason":"short reason"}',
-          '{"action":"wait","ms":number,"reason":"short reason"}',
-          '{"action":"take_over","message":"what the human must do"}',
-          '{"action":"note","message":"short observation"}',
-          '{"action":"done","summary":"what was completed"}',
-          'Open-AutoGLM style actions such as Launch, Tap with element [0-1000,0-1000], Type, Swipe, Back, Home, Long Press, Double Tap, Wait, and Take_over are accepted, but canonical JSON is preferred.',
-          'Do not invent shell commands. Do not interact with payments, passwords, or destructive actions.',
-        ].join('\n'),
+        content: buildSystemPrompt(promptMode),
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: [
-              `Task: ${task}`,
-              `Screen size: ${screen.width}x${screen.height}.`,
-              'Coordinates use Android screen pixels with origin at the top-left.',
-            ].join('\n'),
+            text: buildUserContext({ task, screen, currentApp, deviceState, history, promptMode }),
           },
           {
             type: 'image_url',
@@ -113,6 +120,60 @@ export function buildChatCompletionPayload({
       },
     ],
   }
+
+  if (promptMode === 'canonical-json') {
+    payload.response_format = { type: 'json_object' }
+  }
+
+  return payload
+}
+
+function buildUserContext({
+  task,
+  screen,
+  currentApp,
+  deviceState,
+  history,
+  promptMode,
+}: Pick<
+  CompletionRequest,
+  'task' | 'screen' | 'currentApp' | 'deviceState' | 'history' | 'promptMode'
+>) {
+  const historyEntries = history ?? []
+  const screenInfo = JSON.stringify({
+    current_app: currentApp ?? deviceState?.app ?? 'Unknown',
+    ...(deviceState?.packageName ? { package_name: deviceState.packageName } : {}),
+    ...(deviceState?.activity ? { activity: deviceState.activity } : {}),
+    ...(deviceState?.orientation ? { orientation: deviceState.orientation } : {}),
+    ...(deviceState?.keyboard ? { keyboard: deviceState.keyboard } : {}),
+    screen_size: `${screen.width}x${screen.height}`,
+    coordinate_mode: promptMode === 'autoglm-native' ? 'relative_0_1000' : 'android_pixels',
+  })
+  const lines = [
+    `Task: ${task}`,
+    `Screen Info: ${screenInfo}`,
+    promptMode === 'autoglm-native'
+      ? 'Coordinates in actions should use Open-AutoGLM relative coordinates from 0 to 1000.'
+      : 'Coordinates use Android screen pixels with origin at the top-left.',
+  ]
+
+  if (historyEntries.length > 0) {
+    lines.push('Previous steps:')
+    for (const item of historyEntries.slice(-12)) {
+      lines.push(
+        [
+          `Step ${item.step}`,
+          item.currentApp ? `app=${item.currentApp}` : null,
+          `action=${item.actionPreview}`,
+          item.executionResult ? `result=${item.executionResult}` : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+      )
+    }
+  }
+
+  return lines.join('\n')
 }
 
 export function extractAssistantText(response: unknown): string {
@@ -142,21 +203,25 @@ export function createOpenAiClient(fetcher: typeof fetch = fetch): OpenAiClient 
   return {
     async completeAction(request) {
       const url = `${normalizeBaseUrl(request.baseUrl)}/chat/completions`
+      const payload = buildChatCompletionPayload(request)
       const response = await fetcher(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${request.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(buildChatCompletionPayload(request)),
+        body: JSON.stringify(payload),
       })
 
-      let body: unknown
-      try {
-        body = await response.json()
-      } catch {
-        body = undefined
+      if (request.stream) {
+        if (!response.ok) {
+          const body = await readJsonOrUndefined(response)
+          throw new OpenAiClientError(formatApiError(response.status, body))
+        }
+        return readStreamingAssistantText(response)
       }
+
+      const body = await readJsonOrUndefined(response)
 
       if (!response.ok) {
         throw new OpenAiClientError(formatApiError(response.status, body))
@@ -165,6 +230,78 @@ export function createOpenAiClient(fetcher: typeof fetch = fetch): OpenAiClient 
       return extractAssistantText(body)
     },
   }
+}
+
+async function readJsonOrUndefined(response: Response) {
+  try {
+    return await response.json()
+  } catch {
+    return undefined
+  }
+}
+
+async function readStreamingAssistantText(response: Response) {
+  const body = response.body
+  if (!body) {
+    throw new OpenAiClientError('Model API returned an empty stream.')
+  }
+
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let text = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+    const parts = buffer.split(/\r?\n\r?\n/)
+    buffer = parts.pop() ?? ''
+
+    for (const part of parts) {
+      text += parseSsePart(part)
+    }
+  }
+
+  if (buffer.trim()) {
+    text += parseSsePart(buffer)
+  }
+
+  const trimmed = text.trim()
+  if (!trimmed) {
+    throw new OpenAiClientError('No assistant content returned by model.')
+  }
+  return trimmed
+}
+
+function parseSsePart(part: string) {
+  let text = ''
+  const lines = part.split(/\r?\n/)
+  for (const line of lines) {
+    if (!line.startsWith('data:')) {
+      continue
+    }
+    const data = line.slice(5).trim()
+    if (!data || data === '[DONE]') {
+      continue
+    }
+    try {
+      const payload = JSON.parse(data)
+      const delta = payload?.choices?.[0]?.delta?.content
+      const message = payload?.choices?.[0]?.message?.content
+      if (typeof delta === 'string') {
+        text += delta
+      } else if (typeof message === 'string') {
+        text += message
+      }
+    } catch {
+      // Ignore malformed keepalive events.
+    }
+  }
+  return text
 }
 
 function formatApiError(status: number, body: unknown) {

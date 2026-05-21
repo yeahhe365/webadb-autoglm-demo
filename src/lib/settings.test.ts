@@ -37,6 +37,12 @@ describe('settings persistence', () => {
       maxSteps: 12,
       autoExecute: false,
       preferAdbKeyboard: true,
+      promptMode: 'autoglm-native',
+      confirmSensitiveActions: false,
+      streamResponses: true,
+      actionSettleMs: 350,
+      doubleTapIntervalMs: 75,
+      keyboardStepMs: 450,
     }
 
     expect(
@@ -77,6 +83,23 @@ describe('settings persistence', () => {
     saveSettings(settings, storage)
 
     expect(storage.setItem).toHaveBeenCalledWith('webadb-autoglm-settings', JSON.stringify(settings))
+  })
+
+  it('normalizes new optimization settings when they are missing or invalid', () => {
+    expect(
+      loadSettings(
+        memoryStorage({
+          'webadb-autoglm-settings': JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            promptMode: 'invalid-mode',
+            streamResponses: 'yes',
+            actionSettleMs: -1,
+            doubleTapIntervalMs: 10000,
+            keyboardStepMs: Number.NaN,
+          }),
+        }),
+      ),
+    ).toEqual(DEFAULT_SETTINGS)
   })
 
   it('keeps old combined settings key as a migration fallback', () => {

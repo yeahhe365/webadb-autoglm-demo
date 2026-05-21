@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   AUTO_GLM_ACTION_SETTLE_DELAY_MS,
   AUTO_GLM_DOUBLE_TAP_INTERVAL_MS,
+  DEFAULT_DEVICE_TIMING,
   buildInputCommand,
   buildInputCommandSequence,
   encodeAdbKeyboardText,
+  getSensitiveActionMessage,
   escapeInputText,
   findAdbKeyboardIme,
   isAndroidInputTextSafe,
   isAdbKeyboardInstalled,
   keyToAndroidKeyCode,
+  parseCurrentAppFromDumpsys,
+  parseDeviceStateFromDumpsys,
   parsePngSize,
   resolveAppPackage,
 } from './deviceBackend'
@@ -123,6 +127,24 @@ describe('buildInputCommandSequence', () => {
       { waitMs: AUTO_GLM_ACTION_SETTLE_DELAY_MS },
     ])
   })
+
+  it('uses custom settle and double-tap timing when provided', () => {
+    expect(
+      buildInputCommandSequence(
+        { action: 'double_tap', x: 10, y: 20 },
+        {
+          ...DEFAULT_DEVICE_TIMING,
+          actionSettleMs: 250,
+          doubleTapIntervalMs: 80,
+        },
+      ),
+    ).toEqual([
+      ['input', 'tap', '10', '20'],
+      { waitMs: 80 },
+      ['input', 'tap', '10', '20'],
+      { waitMs: 250 },
+    ])
+  })
 })
 
 describe('escapeInputText', () => {
@@ -172,6 +194,84 @@ describe('resolveAppPackage', () => {
   it('maps common Open-AutoGLM app names to Android packages', () => {
     expect(resolveAppPackage('京东')).toBe('com.jingdong.app.mall')
     expect(resolveAppPackage('YouTube')).toBe('com.google.android.youtube')
+  })
+})
+
+describe('parseCurrentAppFromDumpsys', () => {
+  it('detects the focused package and maps it to a known app label', () => {
+    const output = 'mCurrentFocus=Window{abc u0 com.tencent.mm/.ui.LauncherUI}'
+
+    expect(parseCurrentAppFromDumpsys(output)).toBe('微信')
+  })
+
+  it('returns the package name when the focused app is unknown', () => {
+    const output = 'mFocusedApp=ActivityRecord{abc u0 com.example.notes/.MainActivity t12}'
+
+    expect(parseCurrentAppFromDumpsys(output)).toBe('com.example.notes')
+  })
+
+  it('falls back to System Home when no focus line is present', () => {
+    expect(parseCurrentAppFromDumpsys('no focused window')).toBe('System Home')
+  })
+
+  it('skips focus lines without a package and keeps looking', () => {
+    const output = [
+      'mCurrentFocus=null',
+      'mFocusedApp=ActivityRecord{abc u0 com.android.chrome/com.google.android.apps.chrome.Main t12}',
+    ].join('\n')
+
+    expect(parseCurrentAppFromDumpsys(output)).toBe('chrome')
+  })
+})
+
+describe('parseDeviceStateFromDumpsys', () => {
+  it('extracts app label, package, activity, and orientation', () => {
+    const output = [
+      'mCurrentFocus=Window{abc u0 com.tencent.mm/.ui.LauncherUI}',
+      'mCurrentAppOrientation=1',
+    ].join('\n')
+
+    expect(parseDeviceStateFromDumpsys(output)).toEqual({
+      app: '微信',
+      packageName: 'com.tencent.mm',
+      activity: '.ui.LauncherUI',
+      orientation: 'portrait',
+    })
+  })
+
+  it('uses package names for unknown apps and detects landscape orientation', () => {
+    const output = [
+      'mFocusedApp=ActivityRecord{abc u0 com.example.notes/com.example.notes.MainActivity t12}',
+      'mCurrentAppOrientation=0',
+    ].join('\n')
+
+    expect(parseDeviceStateFromDumpsys(output)).toEqual({
+      app: 'com.example.notes',
+      packageName: 'com.example.notes',
+      activity: 'com.example.notes.MainActivity',
+      orientation: 'landscape',
+    })
+  })
+})
+
+describe('getSensitiveActionMessage', () => {
+  it('asks for confirmation on sensitive tap actions', () => {
+    expect(
+      getSensitiveActionMessage({
+        action: 'tap',
+        x: 100,
+        y: 200,
+        message: '确认付款',
+      }),
+    ).toBe('确认付款')
+    expect(
+      getSensitiveActionMessage({
+        action: 'tap',
+        x: 100,
+        y: 200,
+        risk: 'sensitive',
+      }),
+    ).toBe('Sensitive tap at (100, 200)')
   })
 })
 

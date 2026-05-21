@@ -7,6 +7,8 @@ export type TapAction = {
   action: 'tap'
   x: number
   y: number
+  message?: string
+  risk?: 'sensitive'
   reason?: string
 }
 
@@ -92,6 +94,18 @@ export type NoteAction = {
   reason?: string
 }
 
+export type InteractAction = {
+  action: 'interact'
+  message: string
+  reason?: string
+}
+
+export type CallApiAction = {
+  action: 'call_api'
+  instruction: string
+  reason?: string
+}
+
 export type DoneAction = {
   action: 'done'
   summary?: string
@@ -111,6 +125,8 @@ export type AgentAction =
   | WaitAction
   | TakeOverAction
   | NoteAction
+  | InteractAction
+  | CallApiAction
   | DoneAction
 
 export class ActionValidationError extends Error {
@@ -155,7 +171,7 @@ export function validateAction(candidate: unknown, screen?: ScreenSize): AgentAc
     case 'tap': {
       const { x, y } = readPoint(candidate, screen)
       assertPointWithinScreen(x, y, screen)
-      return withReason({ action, x, y }, candidate)
+      return withTapMetadata({ action, x, y }, candidate)
     }
     case 'swipe': {
       const { fromX, fromY, toX, toY } = readSwipePoints(candidate, screen)
@@ -219,6 +235,22 @@ export function validateAction(candidate: unknown, screen?: ScreenSize): AgentAc
       const message = optionalString(candidate, 'message') ?? optionalString(candidate, 'content') ?? optionalString(candidate, 'text') ?? 'Observation noted.'
       return withReason({ action, message }, candidate)
     }
+    case 'interact': {
+      const message =
+        optionalString(candidate, 'message') ??
+        optionalString(candidate, 'instruction') ??
+        optionalString(candidate, 'content') ??
+        'User interaction required.'
+      return withReason({ action, message }, candidate)
+    }
+    case 'call_api': {
+      const instruction =
+        optionalString(candidate, 'instruction') ??
+        optionalString(candidate, 'message') ??
+        optionalString(candidate, 'content') ??
+        'Summarize the recorded context.'
+      return withReason({ action, instruction }, candidate)
+    }
     case 'done': {
       const summary =
         typeof candidate.summary === 'string' && candidate.summary.trim()
@@ -261,6 +293,10 @@ export function buildActionPreview(action: AgentAction): string {
       return `take over: ${action.message}${suffix}`
     case 'note':
       return `note: ${action.message}${suffix}`
+    case 'interact':
+      return `interact: ${action.message}${suffix}`
+    case 'call_api':
+      return `call api: ${action.instruction}${suffix}`
     case 'done':
       return `done${action.summary ? `: ${action.summary}` : ''}${suffix}`
   }
@@ -282,12 +318,24 @@ function extractJsonObject(raw: string): string {
 
 function parseFunctionLikeAction(raw: string): Record<string, unknown> | null {
   const cleaned = raw.replace(/<\/?answer>/gi, '').trim()
-  const match = cleaned.match(/\b(?:do|action)\s*\(([\s\S]*?)\)/i)
+  const match = cleaned.match(/\b(do|action|finish)\s*\(([\s\S]*?)\)/i)
   if (!match) {
     return null
   }
 
-  return parseFunctionArguments(match[1])
+  const functionName = match[1].toLowerCase()
+  const args = parseFunctionArguments(match[2])
+  if (functionName === 'finish') {
+    const summary =
+      typeof args.message === 'string' && args.message.trim()
+        ? args.message.trim()
+        : typeof args.summary === 'string' && args.summary.trim()
+          ? args.summary.trim()
+          : undefined
+    return summary ? { action: 'done', summary } : { action: 'done' }
+  }
+
+  return args
 }
 
 function parseFunctionArguments(args: string): Record<string, unknown> {
@@ -377,6 +425,22 @@ function withReason<T extends AgentAction>(action: T, source: Record<string, unk
   return { ...action, reason } as T
 }
 
+function withTapMetadata(action: TapAction, source: Record<string, unknown>): TapAction {
+  const base = withReason(action, source)
+  const message = optionalString(source, 'message')
+  const risk = optionalString(source, 'risk')
+
+  if (risk && risk !== 'sensitive') {
+    throw new ActionValidationError(`Unsupported tap risk "${risk}".`)
+  }
+
+  return {
+    ...base,
+    ...(message ? { message } : {}),
+    ...(risk === 'sensitive' ? { risk } : {}),
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -400,9 +464,11 @@ function canonicalActionName(action: string) {
   const normalized = action.trim().toLowerCase().replace(/[\s-]+/g, '_')
   const aliases: Record<string, AgentAction['action']> = {
     click: 'tap',
+    callapi: 'call_api',
     double_click: 'double_tap',
     finish: 'done',
     input: 'input_text',
+    interact: 'interact',
     launch_app: 'launch',
     longpress: 'long_press',
     open_app: 'launch',

@@ -114,6 +114,16 @@ button {
   gap: 8px;
 }
 
+.log-title {
+  justify-content: space-between;
+}
+
+.log-title span {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .panel-title svg {
   color: #2f74b5;
 }
@@ -127,6 +137,7 @@ label {
 }
 
 input,
+select,
 textarea {
   background: #f8fafb;
   border: 1px solid #cfd9de;
@@ -146,6 +157,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: #2f74b5;
   outline: 3px solid rgba(47, 116, 181, 0.16);
@@ -186,6 +198,12 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.timing-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .capability-grid span {
@@ -430,6 +448,10 @@ button.danger {
   }
 
   .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .timing-grid {
     grid-template-columns: 1fr;
   }
 

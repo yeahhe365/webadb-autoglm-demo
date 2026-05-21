@@ -1,4 +1,5 @@
 import type { ModelConfig } from './openAiClient'
+import type { PromptMode } from './prompts'
 
 export type AppSettings = {
   modelConfig: ModelConfig
@@ -6,6 +7,12 @@ export type AppSettings = {
   maxSteps: number
   autoExecute: boolean
   preferAdbKeyboard: boolean
+  promptMode: PromptMode
+  confirmSensitiveActions: boolean
+  streamResponses: boolean
+  actionSettleMs: number
+  doubleTapIntervalMs: number
+  keyboardStepMs: number
 }
 
 export type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>
@@ -25,6 +32,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxSteps: 50,
   autoExecute: true,
   preferAdbKeyboard: false,
+  promptMode: 'canonical-json',
+  confirmSensitiveActions: true,
+  streamResponses: false,
+  actionSettleMs: 1000,
+  doubleTapIntervalMs: 100,
+  keyboardStepMs: 1000,
 }
 
 export function loadSettings(storage: SettingsStorage = localStorage): AppSettings {
@@ -72,6 +85,20 @@ function normalizeSettings(candidate: unknown): AppSettings {
     maxSteps: clamp(readNumber(candidate.maxSteps, DEFAULT_SETTINGS.maxSteps), 1, 200),
     autoExecute: readBoolean(candidate.autoExecute, DEFAULT_SETTINGS.autoExecute),
     preferAdbKeyboard: readBoolean(candidate.preferAdbKeyboard, DEFAULT_SETTINGS.preferAdbKeyboard),
+    promptMode: readPromptMode(candidate.promptMode, DEFAULT_SETTINGS.promptMode),
+    confirmSensitiveActions: readBoolean(
+      candidate.confirmSensitiveActions,
+      DEFAULT_SETTINGS.confirmSensitiveActions,
+    ),
+    streamResponses: readBoolean(candidate.streamResponses, DEFAULT_SETTINGS.streamResponses),
+    actionSettleMs: readRangeNumber(candidate.actionSettleMs, DEFAULT_SETTINGS.actionSettleMs, 100, 5000),
+    doubleTapIntervalMs: readRangeNumber(
+      candidate.doubleTapIntervalMs,
+      DEFAULT_SETTINGS.doubleTapIntervalMs,
+      20,
+      1000,
+    ),
+    keyboardStepMs: readRangeNumber(candidate.keyboardStepMs, DEFAULT_SETTINGS.keyboardStepMs, 100, 5000),
   }
 }
 
@@ -83,8 +110,17 @@ function readNumber(value: unknown, fallback: number) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+function readRangeNumber(value: unknown, fallback: number, min: number, max: number) {
+  const number = readNumber(value, fallback)
+  return number >= min && number <= max ? number : fallback
+}
+
 function readBoolean(value: unknown, fallback: boolean) {
   return typeof value === 'boolean' ? value : fallback
+}
+
+function readPromptMode(value: unknown, fallback: PromptMode): PromptMode {
+  return value === 'canonical-json' || value === 'autoglm-native' ? value : fallback
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
