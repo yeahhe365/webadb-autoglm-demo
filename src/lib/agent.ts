@@ -7,6 +7,7 @@ import type {
 import { type AgentAction, buildActionPreview, parseModelAction } from './actions'
 import type { AgentHistoryItem, ModelConfig, OpenAiClient } from './openAiClient'
 import type { PromptMode } from './prompts'
+import { mapActionCoordinates, modelScreenshotView } from './screenshotCoordinates'
 
 export type AgentTiming = {
   captureMs: number
@@ -23,6 +24,7 @@ export type AgentStep = {
   deviceState: DeviceState
   modelOutput: string
   action: AgentAction
+  executionAction: AgentAction
   preview: string
   timing: AgentTiming
   executionResult?: string
@@ -105,11 +107,13 @@ export async function runAgentStep({
   const currentApp = deviceState.app
   const currentAppMs = elapsed(currentAppStartedAt)
   const modelStartedAt = now()
+  const modelScreenshot = modelScreenshotView(screenshot)
   const modelOutput = await client.completeAction({
     ...modelConfig,
     task,
-    screenshotDataUrl: screenshot.dataUrl,
-    screen: screenshot.screen,
+    screenshotDataUrl: modelScreenshot.dataUrl,
+    screen: modelScreenshot.screen,
+    deviceScreen: screenshot.screen,
     currentApp,
     deviceState,
     history: session?.history ?? [],
@@ -117,7 +121,8 @@ export async function runAgentStep({
   })
   const modelMs = elapsed(modelStartedAt)
   const parseStartedAt = now()
-  const action = parseModelAction(modelOutput, screenshot.screen)
+  const action = parseModelAction(modelOutput, modelScreenshot.screen)
+  const executionAction = mapActionCoordinates(action, modelScreenshot.screen, screenshot.screen)
   const parseMs = elapsed(parseStartedAt)
 
   return {
@@ -127,6 +132,7 @@ export async function runAgentStep({
     deviceState,
     modelOutput,
     action,
+    executionAction,
     preview: buildActionPreview(action),
     timing: {
       captureMs,
@@ -187,7 +193,7 @@ export function createAgentRunner({
           return { status: 'awaiting_review', steps }
         }
 
-        const result = await device.execute(step.action, {
+        const result = await device.execute(step.executionAction, {
           confirmSensitiveAction: input.confirmSensitiveAction,
         })
         recordAgentStep(session, step, result)

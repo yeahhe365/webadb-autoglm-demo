@@ -11,7 +11,6 @@ import {
   RotateCcw,
   ScanEye,
   StepForward,
-  Trash2,
   Usb,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -30,15 +29,10 @@ import {
 } from './lib/agent'
 import { createOpenAiClient, type ModelConfig } from './lib/openAiClient'
 import type { PromptMode } from './lib/prompts'
+import { modelScreenshotView } from './lib/screenshotCoordinates'
 import { loadSettings, saveSettings } from './lib/settings'
-
-type LogEntry = {
-  id: number
-  time: string
-  tone: 'info' | 'ok' | 'warn' | 'error'
-  title: string
-  detail?: string
-}
+import { RunLog, type LogEntry, type LogScreenshot } from './components/RunLog'
+import { ScreenshotLightbox } from './components/ScreenshotLightbox'
 
 function App() {
   const abortRef = useRef<AbortController | null>(null)
@@ -70,6 +64,7 @@ function App() {
 
   const connected = deviceInfo !== null
   const canRun = connected && !busy && Boolean(modelConfig.baseUrl && modelConfig.apiKey && modelConfig.model && task)
+  const displayedScreenshot = screenshot ? modelScreenshotView(screenshot) : null
   const pendingButtonLabel =
     pendingStep?.action.action === 'take_over'
       ? 'Acknowledge'
@@ -148,6 +143,18 @@ function App() {
       },
       ...current,
     ])
+  }
+
+  function toLogScreenshot(value: DeviceScreenshot | null | undefined): LogScreenshot | undefined {
+    if (!value) {
+      return undefined
+    }
+
+    const view = modelScreenshotView(value)
+    return {
+      dataUrl: view.dataUrl,
+      screen: view.screen,
+    }
   }
 
   function ensureSession() {
@@ -235,6 +242,7 @@ function App() {
       const info = await backend.connect()
       setDeviceInfo(info)
       addLog({ tone: 'ok', title: 'Device connected', detail: `${info.name} (${info.serial})` })
+      await captureScreen()
     })
   }
 
@@ -261,6 +269,7 @@ function App() {
         tone: 'ok',
         title: 'Screen captured',
         detail: `${nextScreenshot.screen.width}x${nextScreenshot.screen.height}\n${formatDeviceState(nextDeviceState)}`,
+        screenshot: toLogScreenshot(nextScreenshot),
       })
     })
   }
@@ -293,7 +302,12 @@ function App() {
       setCurrentApp(step.currentApp)
       setDeviceState(step.deviceState)
       setPendingStep(step)
-      addLog({ tone: 'info', title: `Step ${step.index}: ${step.preview}`, detail: formatStepDetail(step) })
+      addLog({
+        tone: 'info',
+        title: `Step ${step.index}: ${step.preview}`,
+        detail: formatStepDetail(step),
+        screenshot: toLogScreenshot(step.screenshot),
+      })
     })
   }
 
@@ -310,7 +324,7 @@ function App() {
         return
       }
 
-      const result = await backend.execute(pendingStep.action, { confirmSensitiveAction })
+      const result = await backend.execute(pendingStep.executionAction, { confirmSensitiveAction })
       recordAgentStep(ensureSession(), pendingStep, result)
       addLog({ tone: 'ok', title: `Executed ${pendingStep.preview}`, detail: result })
       setPendingStep(null)
@@ -338,7 +352,12 @@ function App() {
           setCurrentApp(step.currentApp)
           setDeviceState(step.deviceState)
           setPendingStep(step.action.action === 'done' ? null : step)
-          addLog({ tone: 'info', title: `Step ${step.index}: ${step.preview}`, detail: formatStepDetail(step) })
+          addLog({
+            tone: 'info',
+            title: `Step ${step.index}: ${step.preview}`,
+            detail: formatStepDetail(step),
+            screenshot: toLogScreenshot(step.screenshot),
+          })
         },
         onExecuted: (step, commandResult) => {
           addLog({ tone: 'ok', title: `Executed ${step.preview}`, detail: commandResult })
@@ -557,11 +576,18 @@ function App() {
 
         <section className="phone-stage">
           <div className="phone-frame">
-            {screenshot ? (
-              <>
-                <img src={screenshot.dataUrl} alt="Android screenshot" />
-                {pendingStep ? <ActionOverlay action={pendingStep.action} screen={screenshot.screen} /> : null}
-              </>
+            {displayedScreenshot ? (
+              <ScreenshotLightbox
+                screenshot={displayedScreenshot}
+                title="Android screenshot"
+                thumbnailAlt="Android screenshot"
+                expandedAlt="Expanded screenshot for Android screenshot"
+                thumbnailClassName="phone-screenshot-button"
+              >
+                {pendingStep ? (
+                  <ActionOverlay action={pendingStep.action} screen={displayedScreenshot.screen} />
+                ) : null}
+              </ScreenshotLightbox>
             ) : (
               <div className="empty-screen">
                 <ScanEye size={36} />
@@ -637,28 +663,7 @@ function App() {
         </aside>
       </section>
 
-      <section className="log-section">
-        <div className="panel-title log-title">
-          <span>
-            <RotateCcw size={18} />
-            <h2>Run Log</h2>
-          </span>
-          <button type="button" onClick={clearRunLog} disabled={logs.length === 0}>
-            <Trash2 size={16} />
-            Clear
-          </button>
-        </div>
-        <div className="log-list">
-          {logs.length === 0 ? <p className="muted">No events yet</p> : null}
-          {logs.map((entry) => (
-            <article className={`log-entry ${entry.tone}`} key={entry.id}>
-              <time>{entry.time}</time>
-              <strong>{entry.title}</strong>
-              {entry.detail ? <pre>{entry.detail}</pre> : null}
-            </article>
-          ))}
-        </div>
-      </section>
+      <RunLog logs={logs} onClear={clearRunLog} />
     </main>
   )
 }

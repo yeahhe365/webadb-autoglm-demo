@@ -61,6 +61,7 @@ export function buildSystemPrompt(mode: PromptMode) {
     '{"action":"call_api","instruction":"summarize or analyze recorded notes"}',
     '{"action":"done","summary":"what was completed"}',
     'Open-AutoGLM style actions such as Launch, Tap with element [0-1000,0-1000], Type, Swipe, Back, Home, Long Press, Double Tap, Wait, Take_over, Interact, Note, and Call_API are accepted, but canonical JSON is preferred.',
+    'For canonical JSON touch coordinates, use screenshot pixel coordinates from the attached image. Major grid lines may be labeled with x/y pixel values; use those labels as anchors, not grid-cell numbers.',
     'Do not invent shell commands. Do not interact with payments, passwords, or destructive actions without explicit confirmation metadata.',
     ...AUTO_GLM_OPERATION_RULES,
   ].join('\n')

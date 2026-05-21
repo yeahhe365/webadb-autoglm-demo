@@ -2,6 +2,7 @@ import { Adb, AdbDaemonTransport } from '@yume-chan/adb'
 import AdbWebCredentialStore from '@yume-chan/adb-credential-web'
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb'
 import type { AgentAction } from '../lib/actions'
+import { preprocessScreenshotForModel } from './screenshotPreprocess'
 import {
   DEFAULT_DEVICE_TIMING,
   assertSensitiveActionConfirmed,
@@ -74,11 +75,20 @@ export class WebAdbDeviceBackend implements DeviceBackend {
     const adb = this.#requireAdb()
     const bytes = await adb.subprocess.noneProtocol.spawnWait(['screencap', '-p'])
     const screen = parsePngSize(bytes)
+    const dataUrl = bytesToDataUrl(bytes)
+    let modelScreenshot: { modelDataUrl: string; modelScreen: typeof screen } | undefined
+
+    try {
+      modelScreenshot = await preprocessScreenshotForModel({ dataUrl, screen })
+    } catch {
+      modelScreenshot = { modelDataUrl: dataUrl, modelScreen: screen }
+    }
 
     return {
       bytes,
-      dataUrl: bytesToDataUrl(bytes),
+      dataUrl,
       screen,
+      ...modelScreenshot,
     }
   }
 

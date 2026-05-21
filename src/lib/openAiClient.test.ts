@@ -19,6 +19,7 @@ describe('buildChatCompletionPayload', () => {
       task: 'Open settings',
       screenshotDataUrl: 'data:image/png;base64,abc123',
       screen: { width: 1080, height: 2400 },
+      deviceScreen: { width: 1440, height: 3120 },
       promptMode: 'canonical-json',
     })
 
@@ -37,6 +38,30 @@ describe('buildChatCompletionPayload', () => {
         image_url: { url: 'data:image/png;base64,abc123' },
       },
     ])
+  })
+
+  it('describes screenshot coordinates and device mapping in the user context', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'agent-model',
+      task: 'Open settings',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 955, height: 2048 },
+      deviceScreen: { width: 1080, height: 2316 },
+      promptMode: 'canonical-json',
+    })
+
+    const userMessage = payload.messages[1]
+    if (userMessage.role !== 'user' || userMessage.content[0].type !== 'text') {
+      throw new Error('Expected first user content item to be text.')
+    }
+
+    const userText = userMessage.content[0].text
+    expect(userText).toContain('"model_screen_size":"955x2048"')
+    expect(userText).toContain('"device_screen_size":"1080x2316"')
+    expect(userText).toContain('"coordinate_mode":"screenshot_pixels"')
+    expect(userText).toContain('"grid_divisions":10')
+    expect(userText).toContain('major_lines_only')
+    expect(userText).toContain('mapped back to native device pixels')
   })
 
   it('includes current app and previous step history in the user context', () => {

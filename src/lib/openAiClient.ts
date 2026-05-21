@@ -1,6 +1,7 @@
 import type { DeviceState } from '../adapters/deviceBackend'
 import type { ScreenSize } from './actions'
 import { buildSystemPrompt, type PromptMode } from './prompts'
+import { buildScreenshotContext } from './screenshotCoordinates'
 
 export type ModelConfig = {
   baseUrl: string
@@ -13,6 +14,7 @@ export type CompletionRequest = ModelConfig & {
   task: string
   screenshotDataUrl: string
   screen: ScreenSize
+  deviceScreen?: ScreenSize
   currentApp?: string
   deviceState?: DeviceState
   history?: readonly AgentHistoryItem[]
@@ -78,6 +80,7 @@ export function buildChatCompletionPayload({
   task,
   screenshotDataUrl,
   screen,
+  deviceScreen,
   currentApp,
   deviceState,
   history = [],
@@ -89,6 +92,7 @@ export function buildChatCompletionPayload({
   | 'task'
   | 'screenshotDataUrl'
   | 'screen'
+  | 'deviceScreen'
   | 'currentApp'
   | 'deviceState'
   | 'history'
@@ -110,7 +114,15 @@ export function buildChatCompletionPayload({
         content: [
           {
             type: 'text',
-            text: buildUserContext({ task, screen, currentApp, deviceState, history, promptMode }),
+            text: buildUserContext({
+              task,
+              screen,
+              deviceScreen,
+              currentApp,
+              deviceState,
+              history,
+              promptMode,
+            }),
           },
           {
             type: 'image_url',
@@ -131,13 +143,20 @@ export function buildChatCompletionPayload({
 function buildUserContext({
   task,
   screen,
+  deviceScreen,
   currentApp,
   deviceState,
   history,
   promptMode,
 }: Pick<
   CompletionRequest,
-  'task' | 'screen' | 'currentApp' | 'deviceState' | 'history' | 'promptMode'
+  | 'task'
+  | 'screen'
+  | 'deviceScreen'
+  | 'currentApp'
+  | 'deviceState'
+  | 'history'
+  | 'promptMode'
 >) {
   const historyEntries = history ?? []
   const screenInfo = JSON.stringify({
@@ -146,15 +165,19 @@ function buildUserContext({
     ...(deviceState?.activity ? { activity: deviceState.activity } : {}),
     ...(deviceState?.orientation ? { orientation: deviceState.orientation } : {}),
     ...(deviceState?.keyboard ? { keyboard: deviceState.keyboard } : {}),
-    screen_size: `${screen.width}x${screen.height}`,
-    coordinate_mode: promptMode === 'autoglm-native' ? 'relative_0_1000' : 'android_pixels',
+    ...(promptMode === 'autoglm-native'
+      ? {
+          screen_size: `${screen.width}x${screen.height}`,
+          coordinate_mode: 'relative_0_1000',
+        }
+      : buildScreenshotContext({ modelScreen: screen, deviceScreen })),
   })
   const lines = [
     `Task: ${task}`,
     `Screen Info: ${screenInfo}`,
     promptMode === 'autoglm-native'
       ? 'Coordinates in actions should use Open-AutoGLM relative coordinates from 0 to 1000.'
-      : 'Coordinates use Android screen pixels with origin at the top-left.',
+      : 'Coordinates use pixels in the attached screenshot. Use numeric x/y labels on major grid lines as anchors; do not answer with grid-cell numbers. Your screenshot coordinates are mapped back to native device pixels before execution.',
   ]
 
   if (historyEntries.length > 0) {

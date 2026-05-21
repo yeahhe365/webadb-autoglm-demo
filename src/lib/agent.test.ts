@@ -29,6 +29,28 @@ function fakeDevice(): DeviceBackend & { executed: string[] } {
   }
 }
 
+function fakePreprocessedDevice(): DeviceBackend & { executedActions: unknown[] } {
+  const executedActions: unknown[] = []
+  return {
+    executedActions,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    getCurrentApp: vi.fn(async () => 'Chrome'),
+    getDeviceState: vi.fn(async () => ({ app: 'Chrome' })),
+    screenshot: vi.fn(async () => ({
+      bytes: new Uint8Array(),
+      dataUrl: 'data:image/png;base64,raw',
+      screen: { width: 1000, height: 2000 },
+      modelDataUrl: 'data:image/png;base64,model',
+      modelScreen: { width: 500, height: 1000 },
+    })),
+    execute: vi.fn(async (action) => {
+      executedActions.push(action)
+      return action.action
+    }),
+  }
+}
+
 describe('runAgentStep', () => {
   it('captures the screen, asks the model, and validates the action', async () => {
     const device = fakeDevice()
@@ -87,6 +109,31 @@ describe('runAgentStep', () => {
         history: session.history,
       }),
     )
+  })
+
+  it('asks the model about preprocessed screenshot pixels and stores mapped execution coordinates', async () => {
+    const device = fakePreprocessedDevice()
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"tap","x":250,"y":500,"reason":"open"}'),
+    }
+
+    const step = await runAgentStep({
+      device,
+      client,
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open app',
+      promptMode: 'canonical-json',
+    })
+
+    expect(client.completeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        screenshotDataUrl: 'data:image/png;base64,model',
+        screen: { width: 500, height: 1000 },
+        deviceScreen: { width: 1000, height: 2000 },
+      }),
+    )
+    expect(step.action).toEqual({ action: 'tap', x: 250, y: 500, reason: 'open' })
+    expect(step.executionAction).toEqual({ action: 'tap', x: 500, y: 1000, reason: 'open' })
   })
 
   it('continues with an unknown current app when app detection fails', async () => {
@@ -191,6 +238,24 @@ describe('createAgentRunner', () => {
     expect(device.executed).toEqual(['wait', 'wait'])
   })
 
+  it('auto-executes coordinates mapped back to the device screen', async () => {
+    const device = fakePreprocessedDevice()
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"tap","x":250,"y":500}'),
+    }
+    const runner = createAgentRunner({ device, client })
+
+    await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open app',
+      promptMode: 'canonical-json',
+      autoExecute: true,
+      maxSteps: 1,
+    })
+
+    expect(device.executedActions).toEqual([{ action: 'tap', x: 500, y: 1000 }])
+  })
+
   it('records executed steps in the session history for the next model call', async () => {
     const session = createAgentSession('Open app')
     const step = {
@@ -207,6 +272,7 @@ describe('createAgentRunner', () => {
       },
       modelOutput: '{"action":"tap","x":100,"y":200}',
       action: { action: 'tap', x: 100, y: 200 } as const,
+      executionAction: { action: 'tap', x: 100, y: 200 } as const,
       preview: 'tap (100, 200)',
       timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
     }

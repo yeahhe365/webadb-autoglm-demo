@@ -9,6 +9,9 @@ export type DeviceScreenshot = {
   bytes: Uint8Array
   dataUrl: string
   screen: ScreenSize
+  modelDataUrl?: string
+  modelScreen?: ScreenSize
+  modelGridDivisions?: number
 }
 
 export type DeviceState = {

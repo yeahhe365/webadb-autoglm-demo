@@ -292,6 +292,18 @@ button.danger {
   position: relative;
 }
 
+.phone-screenshot-button {
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  width: 100%;
+}
+
 .phone-frame img {
   display: block;
   height: 100%;
@@ -423,6 +435,108 @@ button.danger {
   word-break: break-word;
 }
 
+.log-screenshot-button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: zoom-in;
+  height: 120px;
+  justify-content: stretch;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  width: 100%;
+}
+
+.log-screenshot-button img {
+  background: #11181d;
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.log-screenshot-overlay {
+  align-items: center;
+  background: rgba(23, 32, 38, 0.55);
+  bottom: 0;
+  color: #ffffff;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.log-screenshot-button:hover .log-screenshot-overlay,
+.log-screenshot-button:focus-visible .log-screenshot-overlay {
+  opacity: 1;
+}
+
+.screenshot-modal {
+  align-items: center;
+  background: rgba(17, 24, 29, 0.72);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 30;
+}
+
+.screenshot-modal-panel {
+  background: #11181d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.4);
+  display: grid;
+  gap: 14px;
+  max-height: 92vh;
+  max-width: min(92vw, 1240px);
+  padding: 14px;
+  width: 100%;
+}
+
+.screenshot-modal-header {
+  align-items: center;
+  color: #eef2f3;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.screenshot-modal-header strong {
+  display: block;
+  font-size: 14px;
+}
+
+.screenshot-modal-header small {
+  color: #9fb0bc;
+}
+
+.screenshot-modal-close {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #eef2f3;
+  flex: 0 0 auto;
+  height: 36px;
+  width: 36px;
+}
+
+.screenshot-modal-panel img {
+  background: #0c1115;
+  display: block;
+  max-height: calc(92vh - 92px);
+  object-fit: contain;
+  width: 100%;
+}
+
 .spin {
   animation: spin 0.8s linear infinite;
 }
@@ -447,10 +561,6 @@ button.danger {
     justify-content: flex-start;
   }
 
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
   .timing-grid {
     grid-template-columns: 1fr;
   }
@@ -461,5 +571,11 @@ button.danger {
 
   .phone-frame {
     max-height: 68vh;
+  }
+}
+
+@media (max-width: 940px) {
+  .workspace {
+    grid-template-columns: 1fr;
   }
 }
