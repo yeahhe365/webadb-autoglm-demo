@@ -1,5 +1,9 @@
 # WebDroid Agent
 
+<p align="center">
+  <a href="./README.md">中文</a> | <a href="./README.en.md">English</a>
+</p>
+
 [English](./README.en-US.md)
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)
