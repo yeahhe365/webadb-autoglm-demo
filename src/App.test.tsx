@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { createAgentThread } from './lib/agentThread'
 import responsiveCss from './styles/responsive.css?raw'
 
 const backendMock = vi.hoisted(() => ({
@@ -21,11 +22,42 @@ const backendMock = vi.hoisted(() => ({
   setTimingConfig: vi.fn(),
 }))
 
+const threadStoreMock = vi.hoisted(() => {
+  const store = {
+    save: vi.fn(),
+    load: vi.fn(),
+    loadLatest: vi.fn(),
+    list: vi.fn(),
+    delete: vi.fn(),
+  }
+  return {
+    store,
+    createIndexedDbThreadStore: vi.fn(() => store),
+    createSettingsSnapshot: vi.fn(({ modelConfig, ...rest }) => ({
+      ...rest,
+      ...(modelConfig
+        ? {
+            modelConfig: {
+              baseUrl: modelConfig.baseUrl,
+              model: modelConfig.model,
+              stream: modelConfig.stream,
+            },
+          }
+        : {}),
+    })),
+  }
+})
+
 vi.mock('./adapters/webAdbBackend', () => ({
   WebAdbDeviceBackend: vi.fn(function MockWebAdbDeviceBackend() {
     return backendMock
   }),
   isWebUsbSupported: () => true,
+}))
+
+vi.mock('./lib/threadStore', () => ({
+  createIndexedDbThreadStore: threadStoreMock.createIndexedDbThreadStore,
+  createSettingsSnapshot: threadStoreMock.createSettingsSnapshot,
 }))
 
 function readMediaBlock(css: string, query: string) {
@@ -137,6 +169,11 @@ describe('App', () => {
     backendMock.installAdbKeyboard.mockResolvedValue('installed')
     backendMock.enableAdbKeyboard.mockResolvedValue('enabled')
     backendMock.execute.mockResolvedValue('ok')
+    threadStoreMock.store.save.mockResolvedValue(undefined)
+    threadStoreMock.store.load.mockResolvedValue(null)
+    threadStoreMock.store.loadLatest.mockResolvedValue(null)
+    threadStoreMock.store.list.mockResolvedValue([])
+    threadStoreMock.store.delete.mockResolvedValue(undefined)
     Object.defineProperty(globalThis, 'fetch', {
       configurable: true,
       value: vi.fn().mockResolvedValue({
@@ -189,6 +226,17 @@ describe('App', () => {
     expect(screen.getByLabelText(/keyboard step/i)).toBeTruthy()
   })
 
+  it('keeps model and ADB configuration in the left configuration panel', () => {
+    render(<App />)
+
+    const configPanel = document.querySelector('.config-panel')
+    expect(configPanel).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Model settings')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Device options')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Direct commands')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Installed apps')).toBeTruthy()
+  })
+
   it('does not expose the removed AutoGLM native prompt mode', () => {
     render(<App />)
 
@@ -220,17 +268,12 @@ describe('App', () => {
   it('keeps low-frequency homepage sections collapsed by default', () => {
     render(<App />)
 
-    for (const summary of [
-      'Conversation',
-      'Run options',
-      'Installed apps',
-      'Direct commands',
-      'Device options',
-    ]) {
+    for (const summary of ['Run options', 'Installed apps', 'Direct commands', 'Device options']) {
       const details = screen.getByText(summary).closest('details')
       expect(details).toBeTruthy()
       expect(details?.hasAttribute('open')).toBe(false)
     }
+    expect(document.querySelector('.chat-shell')).toBeTruthy()
   })
 
   it('styles collapsed sections as compact tool rows with custom affordances', () => {
@@ -250,7 +293,9 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: /^about$/i })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /settings/i }))
 
-    expect(await screen.findByRole('dialog', { name: /settings/i })).toBeTruthy()
+    const settingsDialog = await screen.findByRole('dialog', { name: /settings/i })
+    expect(settingsDialog).toBeTruthy()
+    expect((within(settingsDialog).getByLabelText(/max steps/i) as HTMLInputElement).value).toBe('50')
     expect(screen.getByRole('link', { name: /github repository/i }).getAttribute('href')).toBe(
       'https://github.com/yeahhe365/WebDroid-Agent',
     )
@@ -387,7 +432,6 @@ describe('App', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /send/i }))
 
-    fireEvent.click(screen.getByText('Conversation'))
     const conversation = screen.getByLabelText('Conversation')
     expect(within(conversation).getByText('Open Settings and show the Wi-Fi page.')).toBeTruthy()
     expect(within(conversation).getByText('Now open the Bluetooth page.')).toBeTruthy()
@@ -400,6 +444,61 @@ describe('App', () => {
     expect(within(emptyConversation).getByText('No messages yet')).toBeTruthy()
   })
 
+  it('restores the latest persisted thread on startup', async () => {
+    const restoredThread = createAgentThread('Resume Bluetooth settings', {
+      id: 'restored-thread',
+      now: 1000,
+    })
+    restoredThread.currentApp = 'Settings'
+    restoredThread.deviceState = {
+      app: 'Settings',
+      packageName: 'com.android.settings',
+    }
+    restoredThread.lastScreenshot = {
+      bytes: new Uint8Array(),
+      dataUrl: 'data:image/png;base64,restored',
+      screen: { width: 1080, height: 2400 },
+    }
+    restoredThread.deviceSnapshot = {
+      currentApp: 'Settings',
+      deviceState: restoredThread.deviceState,
+      screenshot: restoredThread.lastScreenshot,
+    }
+    threadStoreMock.store.loadLatest.mockResolvedValue(restoredThread)
+
+    render(<App />)
+
+    const conversation = screen.getByLabelText('Conversation')
+
+    expect(await within(conversation).findByText('Resume Bluetooth settings')).toBeTruthy()
+    expect(screen.getAllByText(/Current app: Settings/i).length).toBeGreaterThan(0)
+    expect(screen.getByAltText('Android screenshot').getAttribute('src')).toBe(
+      'data:image/png;base64,restored',
+    )
+  })
+
+  it('persists chat updates after the thread store is ready', async () => {
+    render(<App />)
+
+    await waitFor(() => expect(threadStoreMock.store.save).toHaveBeenCalled())
+    threadStoreMock.store.save.mockClear()
+
+    fireEvent.change(screen.getByLabelText(/chat message/i), {
+      target: { value: 'Persist this follow-up.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() =>
+      expect(threadStoreMock.store.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: 'user', content: 'Persist this follow-up.' }),
+          ]),
+        }),
+      ),
+    )
+  })
+
   it('fills the chat input from a task template without sending it', () => {
     render(<App />)
 
@@ -409,7 +508,6 @@ describe('App', () => {
     expect((screen.getByLabelText(/chat message/i) as HTMLTextAreaElement).value).toBe(
       'Launch the app named <app name>, wait until it is fully visible, and report the current screen.',
     )
-    fireEvent.click(screen.getByText('Conversation'))
     const conversation = screen.getByLabelText('Conversation')
     expect(within(conversation).queryByText(/Launch the app named/)).toBeNull()
   })

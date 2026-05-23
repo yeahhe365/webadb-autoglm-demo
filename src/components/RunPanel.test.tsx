@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentStep } from '../lib/agent'
 import { APP_COPY } from '../lib/appCopy'
 import { RunPanel } from './RunPanel'
 
@@ -14,12 +15,10 @@ function renderRunPanel(overrides: Partial<Parameters<typeof RunPanel>[0]> = {})
     conversation: [],
     copy: APP_COPY['en-US'],
     logsCount: 0,
-    maxSteps: 8,
     onAutoExecuteChange: vi.fn(),
     onChatInputChange: vi.fn(),
     onExecutePendingStep: vi.fn(),
     onExportRunLog: vi.fn(),
-    onMaxStepsChange: vi.fn(),
     onPlanNextStep: vi.fn(),
     onResetSession: vi.fn(),
     onRunAutoLoop: vi.fn(),
@@ -57,6 +56,34 @@ describe('RunPanel', () => {
     expect(screen.queryByRole('button', { name: /^run$/i })).toBeNull()
   })
 
+  it('renders the conversation as a persistent chat stream with a bottom composer', () => {
+    renderRunPanel({
+      conversation: [
+        { id: 'u1', role: 'user', content: 'Open Settings.' },
+        { id: 'o1', role: 'observation', content: 'Current app: Settings.' },
+        { id: 'a1', role: 'assistant', content: 'Done.' },
+      ],
+    })
+
+    expect(screen.queryByRole('button', { name: 'Conversation' })).toBeNull()
+
+    const chatShell = document.querySelector('.chat-shell')
+    const chatStream = document.querySelector('.chat-stream')
+    const composer = document.querySelector('.chat-composer')
+
+    expect(chatShell).toBeTruthy()
+    expect(chatStream).toBeTruthy()
+    expect(composer).toBeTruthy()
+    expect(chatShell?.contains(chatStream)).toBe(true)
+    expect(chatShell?.contains(composer)).toBe(true)
+    expect(within(chatStream as HTMLElement).getByText('Open Settings.')).toBeTruthy()
+    expect(within(chatStream as HTMLElement).getByText('Current app: Settings.')).toBeTruthy()
+    expect(within(chatStream as HTMLElement).getByText('Done.')).toBeTruthy()
+    expect(composer?.compareDocumentPosition(chatStream as HTMLElement)).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    )
+  })
+
   it('shows exactly one primary agent action for the selected run mode', () => {
     renderRunPanel({ autoExecute: false, canRun: true })
 
@@ -82,6 +109,19 @@ describe('RunPanel', () => {
     expect(screen.getByRole('button', { name: /running/i })).toBeTruthy()
   })
 
+  it('keeps a stop control visible in the primary run actions while busy', () => {
+    renderRunPanel({
+      autoExecute: true,
+      busyTask: { id: 'run-agent' },
+      canRun: false,
+    })
+
+    const stopButton = screen.getByRole('button', { name: /^stop$/i })
+
+    expect(stopButton.closest('.agent-run-actions')).toBeTruthy()
+    expect(stopButton.hasAttribute('disabled')).toBe(false)
+  })
+
   it('explains disabled chat and run actions without showing an inert execute button', () => {
     renderRunPanel()
 
@@ -92,5 +132,42 @@ describe('RunPanel', () => {
       'Connect a device, configure the model, and send or choose a task first.',
     )
     expect(screen.queryByRole('button', { name: /^execute$/i })).toBeNull()
+  })
+
+  it('does not keep max steps in the run panel after moving it to settings', () => {
+    renderRunPanel()
+
+    expect(screen.queryByLabelText(/max steps/i)).toBeNull()
+  })
+
+  it('hides the pending action panel when there is no pending step', () => {
+    renderRunPanel({ pendingStep: null })
+
+    expect(document.querySelector('.pending-action')).toBeNull()
+    expect(screen.queryByText('Pending action')).toBeNull()
+    expect(screen.queryByText('None')).toBeNull()
+  })
+
+  it('keeps the pending action panel for a real pending step', () => {
+    const pendingStep = {
+      index: 2,
+      action: {
+        action: 'tap',
+        x: 120,
+        y: 240,
+      },
+      preview: 'tap at 120, 240',
+    } as AgentStep
+
+    renderRunPanel({ pendingStep })
+
+    const pendingAction = document.querySelector('.pending-action')
+    expect(pendingAction).toBeTruthy()
+    expect(within(pendingAction as HTMLElement).getByText('Pending action')).toBeTruthy()
+    expect(within(pendingAction as HTMLElement).getByText('Step 2')).toBeTruthy()
+    expect(within(pendingAction as HTMLElement).getByText('tap (120, 240)')).toBeTruthy()
+    expect(
+      within(pendingAction as HTMLElement).getByRole('button', { name: /^execute$/i }),
+    ).toBeTruthy()
   })
 })

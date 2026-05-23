@@ -17,7 +17,57 @@
   padding: 0 10px;
 }
 
-.chat-composer,
+.chat-shell {
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr) auto;
+  margin: -2px -2px 0;
+  min-height: 430px;
+  overflow: hidden;
+}
+
+.chat-shell-header {
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+  padding: 0 2px 12px;
+}
+
+.chat-stream {
+  align-content: start;
+  background: var(--subtle-bg);
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.chat-stream .muted {
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+}
+
+.chat-composer {
+  background: var(--panel-bg);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.chat-input-label {
+  display: grid;
+  gap: 7px;
+}
+
+.chat-input-label span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .agent-run-actions {
   display: grid;
   gap: 9px;
@@ -102,6 +152,20 @@
   min-height: 44px;
 }
 
+.run-action-row {
+  display: grid;
+  gap: 8px;
+}
+
+.run-action-row.stopping {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.run-stop {
+  min-height: 44px;
+  padding: 0 14px;
+}
+
 .agent-run-actions .run-cta:disabled {
   background: var(--button-bg);
   border-color: var(--border-strong);
@@ -142,48 +206,35 @@
   padding: 11px;
 }
 
-.pending-action.empty p {
-  color: var(--text-soft);
-}
-
-.conversation-list {
-  background: var(--subtle-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  display: grid;
-  gap: 8px;
-  max-height: 260px;
-  min-height: 160px;
-  overflow: auto;
-  padding: 10px;
-}
-
-.conversation-list .muted {
-  align-self: center;
-  justify-self: center;
-  margin: 0;
-}
-
 .chat-message {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
   display: grid;
   gap: 5px;
+  line-height: 1.45;
+  max-width: 86%;
   padding: 9px 10px;
 }
 
 .chat-message.user {
   background: var(--accent-soft);
   border-color: var(--accent-soft-border);
+  border-bottom-right-radius: 6px;
+  justify-self: end;
 }
 
 .chat-message.assistant {
   background: var(--panel-bg);
+  border-bottom-left-radius: 6px;
+  justify-self: start;
 }
 
 .chat-message.observation {
   background: var(--surface-muted);
   border-color: var(--surface-muted-border);
+  border-bottom-left-radius: 6px;
+  justify-self: start;
 }
 
 .chat-message span {

@@ -22,6 +22,7 @@ export function buildChatCompletionPayload({
   history = [],
   appCard,
   installedApps,
+  promptContext,
   stream,
 }: Pick<
   CompletionRequest,
@@ -36,6 +37,7 @@ export function buildChatCompletionPayload({
   | 'history'
   | 'appCard'
   | 'installedApps'
+  | 'promptContext'
   | 'stream'
 >): ChatCompletionPayload {
   const messages: ChatMessage[] = [
@@ -45,17 +47,19 @@ export function buildChatCompletionPayload({
     },
   ]
 
-  const context = buildUserContext({
-    task,
-    screen,
-    deviceScreen,
-    currentApp,
-    deviceState,
-    history,
-    appCard,
-    installedApps,
-    latestUserMessage: latestUserMessage(conversation),
-  })
+  const context =
+    promptContext ??
+    buildUserContext({
+      task,
+      screen,
+      deviceScreen,
+      currentApp,
+      deviceState,
+      history,
+      appCard,
+      installedApps,
+      latestUserMessage: latestUserMessage(conversation),
+    })
   const conversationMessages = conversation?.filter((message) => message.content.trim()) ?? []
 
   if (conversationMessages.length > 0) {

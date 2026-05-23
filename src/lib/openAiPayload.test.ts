@@ -229,4 +229,31 @@ describe('buildChatCompletionPayload', () => {
 
     expect(payload.stream).toBe(true)
   })
+
+  it('uses a prebuilt prompt context when provided', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'agent-model',
+      task: 'Open settings',
+      promptContext: 'Task: Open settings\n<context_summary>\nAlready opened Settings.\n</context_summary>',
+      screenshotDataUrl: 'data:image/png;base64,abc123',
+      screen: { width: 1080, height: 2400 },
+    })
+
+    const userMessage = payload.messages[1]
+    if (
+      userMessage.role !== 'user' ||
+      !Array.isArray(userMessage.content) ||
+      userMessage.content[0].type !== 'text'
+    ) {
+      throw new Error('Expected first user content item to be text.')
+    }
+
+    expect(userMessage.content[0].text).toBe(
+      'Task: Open settings\n<context_summary>\nAlready opened Settings.\n</context_summary>',
+    )
+    expect(userMessage.content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'data:image/png;base64,abc123' },
+    })
+  })
 })

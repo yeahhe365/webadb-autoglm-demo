@@ -19,6 +19,7 @@ export type CompletionRequest = ModelConfig & {
   history?: readonly AgentHistoryItem[]
   appCard?: string
   installedApps?: readonly InstalledApp[]
+  promptContext?: string
 }
 
 export type RepairActionRequest = CompletionRequest & {

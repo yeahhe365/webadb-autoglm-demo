@@ -149,6 +149,61 @@ describe('runAgentStep', () => {
     )
   })
 
+  it('records model output in a structured turn instead of the visible transcript', async () => {
+    const device = fakeDevice()
+    const session = createAgentSession('Open Chrome')
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"tap","x":100,"y":200,"reason":"open"}'),
+    }
+
+    const step = await runAgentStep({
+      device,
+      client,
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open Chrome',
+      session,
+    })
+
+    expect(step.turnId).toBe(session.turns[0].id)
+    expect(step.promptContext).toContain('Task: Open Chrome')
+    expect(session.turns[0]).toEqual(
+      expect.objectContaining({
+        index: 1,
+        modelOutput: '{"action":"tap","x":100,"y":200,"reason":"open"}',
+        preview: 'tap (100, 200) - open',
+        status: 'planned',
+      }),
+    )
+    expect(session.messages).toEqual([
+      expect.objectContaining({ role: 'user', content: 'Open Chrome' }),
+    ])
+  })
+
+  it('passes the built prompt context into model requests and stores it on the turn', async () => {
+    const device = fakeDevice()
+    const session = createAgentSession('Open Settings')
+    session.contextSummary = 'Earlier context: Settings is already open.'
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async () => '{"action":"done","summary":"finished"}'),
+    }
+
+    const step = await runAgentStep({
+      device,
+      client,
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Open Settings',
+      session,
+    })
+
+    expect(client.completeAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptContext: expect.stringContaining('Earlier context: Settings is already open.'),
+      }),
+    )
+    expect(step.promptContext).toContain('Earlier context: Settings is already open.')
+    expect(session.turns[0].promptContext).toBe(step.promptContext)
+  })
+
   it('passes the current app card into model requests when a package matches', async () => {
     const device = fakeDevice()
     const client: OpenAiClient = {

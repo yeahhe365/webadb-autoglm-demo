@@ -16,6 +16,17 @@ import type {
   OpenAiClient,
 } from './openAiTypes'
 import { mapActionCoordinates, modelScreenshotView } from './screenshotCoordinates'
+import { buildAgentPromptContext, compactThreadContext } from './contextBuilder'
+import {
+  createAgentThread,
+  createConversationMessage,
+  recordThreadTurnExecution,
+  recordThreadUserMessage,
+  startThreadTurn,
+  updateThreadDeviceSnapshot,
+  type AgentThread,
+  type QueuedUserMessage,
+} from './agentThread'
 import {
   createDefaultActionToolRegistry,
   type ActionToolRegistry,
@@ -31,6 +42,8 @@ export type AgentTiming = {
 
 export type AgentStep = {
   index: number
+  turnId?: string
+  promptContext?: string
   screenshot: DeviceScreenshot
   currentApp: string
   deviceState: DeviceState
@@ -92,64 +105,14 @@ export type CreateAgentRunnerInput = {
   toolRegistry?: ActionToolRegistry
 }
 
-export type AgentSession = {
-  task: string
-  currentApp: string
-  deviceState: DeviceState
-  lastScreenshot?: DeviceScreenshot
-  visitedPackages: string[]
-  visitedActivities: string[]
-  lastActionPreview?: string
-  lastExecutionResult?: string
-  actionOutcomes: boolean[]
-  errorDescriptions: string[]
-  memory: string[]
-  progressSummary: string
-  finished: boolean
-  success?: boolean
-  history: AgentHistoryItem[]
-  messages: AgentConversationMessage[]
-  pendingUserMessages: QueuedUserMessage[]
-  stepNumber: number
-}
-
-export type QueuedUserMessage = {
-  id: string
-  message: string
-  queuedAtStep: number
-}
+export type AgentSession = AgentThread
 
 export function createAgentSession(task: string): AgentSession {
-  const initialTask = task.trim()
-  return {
-    task,
-    currentApp: 'Unknown',
-    deviceState: { app: 'Unknown' },
-    visitedPackages: [],
-    visitedActivities: [],
-    actionOutcomes: [],
-    errorDescriptions: [],
-    memory: [],
-    progressSummary: '',
-    finished: false,
-    history: [],
-    messages: initialTask ? [createConversationMessage('user', initialTask)] : [],
-    pendingUserMessages: [],
-    stepNumber: 0,
-  }
+  return createAgentThread(task)
 }
 
 export function addUserMessage(session: AgentSession, message: string) {
-  const content = message.trim()
-  if (!content) {
-    throw new Error('Cannot add an empty user message.')
-  }
-  const entry = createConversationMessage('user', content)
-  session.messages.push(entry)
-  if (!session.task.trim()) {
-    session.task = content
-  }
-  return entry
+  return recordThreadUserMessage(session, message)
 }
 
 export function queueUserMessage(session: AgentSession, message: string): QueuedUserMessage {
@@ -175,6 +138,16 @@ export function recordAgentStep(
     deviceState: step.deviceState,
     screenshot: step.screenshot,
   })
+
+  if (step.turnId && session.turns.some((turn) => turn.id === step.turnId)) {
+    recordThreadTurnExecution(session, step.turnId, {
+      executionResult,
+      success,
+    })
+    compactThreadContext(session)
+    return
+  }
+
   session.lastActionPreview = step.preview
   session.lastExecutionResult = executionResult
   if (step.action.action === 'done') {
@@ -197,6 +170,7 @@ export function recordAgentStep(
   if (executionResult) {
     session.messages.push(createConversationMessage('observation', executionResult))
   }
+  compactThreadContext(session)
 }
 
 export async function runAgentStep({
@@ -230,6 +204,18 @@ export async function runAgentStep({
     updateSessionDeviceSnapshot(session, { currentApp, deviceState, screenshot })
     drainPendingUserMessages(session)
   }
+  const builtContext = buildAgentPromptContext({
+    thread: session,
+    task,
+    latestUserMessage: session ? latestUserMessage(session.messages) : undefined,
+    screen: modelScreenshot.screen,
+    deviceScreen: screenshot.screen,
+    currentApp,
+    deviceState,
+    appCard: resolveAppCard(deviceState.packageName),
+    installedApps,
+  })
+  const promptContext = builtContext.text
   const completionRequest = {
     ...modelConfig,
     task,
@@ -239,9 +225,10 @@ export async function runAgentStep({
     deviceScreen: screenshot.screen,
     currentApp,
     deviceState,
-    history: session?.history ?? [],
+    history: builtContext.history,
     appCard: resolveAppCard(deviceState.packageName),
     installedApps,
+    promptContext,
   }
   let modelOutput = await client.completeAction(completionRequest)
   let modelMs = elapsed(modelStartedAt)
@@ -267,27 +254,42 @@ export async function runAgentStep({
     parseMs += elapsed(parseStartedAt)
   }
 
-  if (session) {
-    session.messages.push(createConversationMessage('assistant', modelOutput))
-  }
   const executionAction = mapActionCoordinates(action, modelScreenshot.screen, screenshot.screen)
+  const preview = buildActionPreview(action)
+  const timing = {
+    captureMs,
+    currentAppMs,
+    modelMs,
+    parseMs,
+    totalMs: elapsed(startedAt),
+  }
+  const turn = session
+    ? startThreadTurn(session, {
+        index,
+        task,
+        latestUserMessage: latestUserMessage(session.messages),
+        promptContext,
+        deviceSnapshot: { currentApp, deviceState, screenshot },
+        modelOutput,
+        action,
+        executionAction,
+        preview,
+        timing,
+      })
+    : undefined
 
   return {
     index,
+    turnId: turn?.id,
+    promptContext,
     screenshot,
     currentApp,
     deviceState,
     modelOutput,
     action,
     executionAction,
-    preview: buildActionPreview(action),
-    timing: {
-      captureMs,
-      currentAppMs,
-      modelMs,
-      parseMs,
-      totalMs: elapsed(startedAt),
-    },
+    preview,
+    timing,
   }
 }
 
@@ -382,30 +384,7 @@ function updateSessionDeviceSnapshot(
     screenshot?: DeviceScreenshot
   },
 ) {
-  session.currentApp = snapshot.currentApp
-  session.deviceState = snapshot.deviceState
-  if (snapshot.screenshot) {
-    session.lastScreenshot = snapshot.screenshot
-  }
-  addUnique(session.visitedPackages, snapshot.deviceState.packageName)
-  addUnique(session.visitedActivities, snapshot.deviceState.activity)
-}
-
-function addUnique(values: string[], value: string | undefined) {
-  if (value && !values.includes(value)) {
-    values.push(value)
-  }
-}
-
-function createConversationMessage(
-  role: AgentConversationMessage['role'],
-  content: string,
-): AgentConversationMessage {
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    role,
-    content,
-  }
+  updateThreadDeviceSnapshot(session, snapshot)
 }
 
 function now() {
@@ -414,6 +393,16 @@ function now() {
 
 function elapsed(startedAt: number) {
   return Math.round(performance.now() - startedAt)
+}
+
+function latestUserMessage(conversation: readonly AgentConversationMessage[]) {
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const message = conversation[index]
+    if (message.role === 'user' && message.content.trim()) {
+      return message.content.trim()
+    }
+  }
+  return undefined
 }
 
 function detectLoopGuard(session: AgentSession, step: AgentStep) {

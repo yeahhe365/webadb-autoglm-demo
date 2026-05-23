@@ -1,4 +1,4 @@
-import { AlertTriangle, Code2, ExternalLink, GitFork, Languages, Monitor, Star } from 'lucide-react'
+import { AlertTriangle, Code2, ExternalLink, Gauge, GitFork, Languages, Monitor, Star } from 'lucide-react'
 import type { AppCopy } from '../lib/appCopy'
 import { REPOSITORY_URL, type RepositoryStats } from '../lib/repository'
 import type { LanguageMode, ThemeMode } from '../lib/settings'
@@ -6,8 +6,10 @@ import type { LanguageMode, ThemeMode } from '../lib/settings'
 export type SettingsDialogProps = {
   copy: AppCopy
   languageMode: LanguageMode
+  maxSteps: number
   onLanguageModeChange: (value: LanguageMode) => void
   onClose: () => void
+  onMaxStepsChange: (value: number) => void
   onThemeModeChange: (value: ThemeMode) => void
   repositoryStats: RepositoryStats | null
   repositoryStatsStatus: 'idle' | 'loading' | 'done' | 'error'
@@ -17,8 +19,10 @@ export type SettingsDialogProps = {
 export function SettingsDialog({
   copy,
   languageMode,
+  maxSteps,
   onLanguageModeChange,
   onClose,
+  onMaxStepsChange,
   onThemeModeChange,
   repositoryStats,
   repositoryStatsStatus,
@@ -74,6 +78,19 @@ export function SettingsDialog({
             <option value="light">{copy.themeLight}</option>
             <option value="dark">{copy.themeDark}</option>
           </select>
+        </label>
+        <label className="settings-field">
+          <span>
+            <Gauge size={16} />
+            {copy.maxSteps}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={200}
+            value={maxSteps}
+            onChange={(event) => onMaxStepsChange(Number(event.target.value))}
+          />
         </label>
         <p className="settings-copy">{copy.appDescription}</p>
         <a

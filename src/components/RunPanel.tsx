@@ -26,14 +26,12 @@ export type RunPanelProps = {
   conversation: AgentConversationMessage[]
   copy: AppCopy
   logsCount: number
-  maxSteps: number
   pendingStep: AgentStep | null
   taskTemplates: TaskTemplate[]
   onAutoExecuteChange: (value: boolean) => void
   onChatInputChange: (value: string) => void
   onExecutePendingStep: () => void
   onExportRunLog: () => void
-  onMaxStepsChange: (value: number) => void
   onPlanNextStep: () => void
   onResetSession: () => void
   onRunAutoLoop: () => void
@@ -51,12 +49,10 @@ export function RunPanel({
   conversation,
   copy,
   logsCount,
-  maxSteps,
   onAutoExecuteChange,
   onChatInputChange,
   onExecutePendingStep,
   onExportRunLog,
-  onMaxStepsChange,
   onPlanNextStep,
   onResetSession,
   onRunAutoLoop,
@@ -70,7 +66,8 @@ export function RunPanel({
   const chatIsEmpty = chatInput.trim().length === 0
   const runActionLabel = autoExecute ? copy.runAgent : copy.planNextStep
   const isBusy = Boolean(busyTask)
-  const isRunningAgent = busyTask?.id === 'run-agent'
+  const canStopRun = busyTask?.id === 'run-agent'
+  const isRunningAgent = canStopRun
   const runActionTitle = busyTask ? copy.waitForCurrentRun : copy.runUnavailable
   const runActionDisabled = !canRun
   const runAction = autoExecute ? onRunAutoLoop : onPlanNextStep
@@ -85,25 +82,24 @@ export function RunPanel({
 
   return (
     <>
-      <div className="panel-title run-panel-title">
-        <div className="panel-title-main">
-          <MessageSquare size={18} />
-          <h2>{copy.chat}</h2>
+      <section className="chat-shell" aria-label={copy.chat}>
+        <div className="panel-title run-panel-title chat-shell-header">
+          <div className="panel-title-main">
+            <MessageSquare size={18} />
+            <h2>{copy.chat}</h2>
+          </div>
+          <button
+            type="button"
+            className="panel-title-action"
+            onClick={onStartNewChat}
+            disabled={isBusy}
+            title={busyTask ? copy.waitForCurrentRun : copy.newChat}
+          >
+            <Plus size={16} />
+            {copy.newChat}
+          </button>
         </div>
-        <button
-          type="button"
-          className="panel-title-action"
-          onClick={onStartNewChat}
-          disabled={isBusy}
-          title={busyTask ? copy.waitForCurrentRun : copy.newChat}
-        >
-          <Plus size={16} />
-          {copy.newChat}
-        </button>
-      </div>
-      <details className="compact-section">
-        <summary>{copy.conversation}</summary>
-        <div className="conversation-list" aria-label={copy.conversation}>
+        <div className="chat-stream" aria-label={copy.conversation}>
           {conversation.length === 0 ? <p className="muted">{copy.noMessages}</p> : null}
           {conversation.map((message) => (
             <article className={`chat-message ${message.role}`} key={message.id}>
@@ -112,50 +108,54 @@ export function RunPanel({
             </article>
           ))}
         </div>
-      </details>
-      <label>
-        {copy.taskTemplate}
-        <select
-          value=""
-          onChange={(event) => {
-            const template = taskTemplates.find((candidate) => candidate.id === event.target.value)
-            if (template) {
-              onTaskTemplateSelect(template.prompt)
-            }
-          }}
-          disabled={isBusy}
-        >
-          <option value="">{copy.chooseTaskTemplate}</option>
-          {taskTemplates.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.title}
-            </option>
-          ))}
-        </select>
-      </label>
-      <section className="chat-composer">
-        <label>
-          {copy.chatMessage}
-          <textarea
-            value={chatInput}
-            onChange={(event) => onChatInputChange(event.target.value)}
-            rows={4}
-            placeholder={copy.chatPlaceholder}
-          />
-        </label>
-        <div className="composer-actions">
-          <button
-            type="button"
-            className="wide"
-            onClick={onSubmitChatMessage}
-            disabled={chatIsEmpty}
-            title={chatIsEmpty ? copy.typeMessageFirst : copy.send}
-          >
-            <Send size={16} />
-            {copy.send}
-          </button>
+        <div className="chat-composer">
+          <label className="chat-input-label">
+            <span>{copy.chatMessage}</span>
+            <textarea
+              value={chatInput}
+              onChange={(event) => onChatInputChange(event.target.value)}
+              rows={3}
+              placeholder={copy.chatPlaceholder}
+            />
+          </label>
+          <div className="composer-actions">
+            <button
+              type="button"
+              className="wide primary"
+              onClick={onSubmitChatMessage}
+              disabled={chatIsEmpty}
+              title={chatIsEmpty ? copy.typeMessageFirst : copy.send}
+            >
+              <Send size={16} />
+              {copy.send}
+            </button>
+          </div>
         </div>
       </section>
+
+      <details className="compact-section">
+        <summary>{copy.taskTemplate}</summary>
+        <label>
+          {copy.taskTemplate}
+          <select
+            value=""
+            onChange={(event) => {
+              const template = taskTemplates.find((candidate) => candidate.id === event.target.value)
+              if (template) {
+                onTaskTemplateSelect(template.prompt)
+              }
+            }}
+            disabled={isBusy}
+          >
+            <option value="">{copy.chooseTaskTemplate}</option>
+            {taskTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      </details>
 
       <section className="agent-run-actions" aria-label={copy.agentRun}>
         <div className="run-mode" role="radiogroup" aria-label={copy.executionMode}>
@@ -187,35 +187,29 @@ export function RunPanel({
             </span>
           </label>
         </div>
-        <button
-          type="button"
-          className="wide primary run-cta"
-          onClick={runAction}
-          disabled={runActionDisabled}
-          title={runActionDisabled ? runActionTitle : runActionLabel}
-        >
-          {runIcon}
-          {isRunningAgent ? copy.running : runActionLabel}
-        </button>
+        <div className={canStopRun ? 'run-action-row stopping' : 'run-action-row'}>
+          <button
+            type="button"
+            className="wide primary run-cta"
+            onClick={runAction}
+            disabled={runActionDisabled}
+            title={runActionDisabled ? runActionTitle : runActionLabel}
+          >
+            {runIcon}
+            {isRunningAgent ? copy.running : runActionLabel}
+          </button>
+          {canStopRun ? (
+            <button type="button" className="danger run-stop" onClick={onStopRun}>
+              <CircleStop size={16} />
+              {copy.stop}
+            </button>
+          ) : null}
+        </div>
       </section>
 
       <details className="compact-section">
         <summary>{copy.runOptions}</summary>
         <div className="run-options-panel">
-          <label>
-            {copy.maxSteps}
-            <input
-              type="number"
-              min={1}
-              max={200}
-              value={maxSteps}
-              onChange={(event) => onMaxStepsChange(Number(event.target.value))}
-            />
-          </label>
-          <button type="button" className="wide danger" onClick={onStopRun} disabled={!busyTask}>
-            <CircleStop size={16} />
-            {copy.stop}
-          </button>
           <div className="button-row">
             <button type="button" onClick={onResetSession} disabled={isBusy}>
               <RotateCcw size={16} />
@@ -229,13 +223,13 @@ export function RunPanel({
         </div>
       </details>
 
-      <div className={`pending-action ${pendingStep ? 'ready' : 'empty'}`}>
-        <div className="pending-header">
-          <span>{copy.pendingAction}</span>
-          {pendingStep ? <small>{copy.step} {pendingStep.index}</small> : null}
-        </div>
-        <p>{pendingStep ? buildActionPreview(pendingStep.action) : copy.none}</p>
-        {pendingStep ? (
+      {pendingStep ? (
+        <div className="pending-action ready">
+          <div className="pending-header">
+            <span>{copy.pendingAction}</span>
+            <small>{copy.step} {pendingStep.index}</small>
+          </div>
+          <p>{buildActionPreview(pendingStep.action)}</p>
           <button
             type="button"
             className="wide primary"
@@ -246,8 +240,8 @@ export function RunPanel({
             <Check size={16} />
             {pendingActionLabel(pendingStep.action.action, copy)}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </>
   )
 }

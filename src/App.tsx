@@ -4,7 +4,7 @@ import {
   Settings as SettingsIcon,
   Usb,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ADB_KEYBOARD_APK_URL } from './adapters/deviceCommands'
 import type { DeviceInfo, DeviceScreenshot, DeviceState, InstalledApp } from './adapters/deviceTypes'
 import { getInstalledAppDisplayName } from './adapters/installedApps'
@@ -29,6 +29,10 @@ import {
 } from './lib/deviceDoctor'
 import { createOpenAiClient } from './lib/openAiClient'
 import type { ModelConfig } from './lib/openAiTypes'
+import {
+  createIndexedDbThreadStore,
+  createSettingsSnapshot,
+} from './lib/threadStore'
 import { APP_COPY, resolveLocale } from './lib/appCopy'
 import { useBusyTask } from './hooks/useBusyTask'
 import { useDeviceBackendPreferences } from './hooks/useDeviceBackendPreferences'
@@ -62,12 +66,18 @@ type DeviceSnapshotUpdate = {
 function App() {
   const abortRef = useRef<AbortController | null>(null)
   const settings = useMemo(() => loadSettings(), [])
-  const initialSession = useMemo(() => createAgentSession(settings.task), [settings.task])
+  const initialSession = useMemo(() => {
+    const session = createAgentSession(settings.task)
+    session.settingsSnapshot = createSettingsSnapshot(settings)
+    return session
+  }, [settings])
   const sessionRef = useRef<AgentSession>(initialSession)
   const [conversation, setConversation] = useState(() => [...initialSession.messages])
   const [backend] = useState(() => new WebAdbDeviceBackend())
   const client = useMemo(() => createOpenAiClient(), [])
   const actionToolRegistry = useMemo(() => createDefaultActionToolRegistry(), [])
+  const threadStore = useMemo(() => createIndexedDbThreadStore(), [])
+  const [threadStoreReady, setThreadStoreReady] = useState(false)
   const [modelConfig, setModelConfig] = useState<ModelConfig>(settings.modelConfig)
   const [task, setTask] = useState(settings.task)
   const [chatInput, setChatInput] = useState('')
@@ -144,6 +154,53 @@ function App() {
   })
   usePersistedSettings(currentSettings)
 
+  useEffect(() => {
+    let cancelled = false
+
+    void threadStore
+      .loadLatest()
+      .then((restoredThread) => {
+        if (cancelled || !restoredThread) {
+          return
+        }
+
+        sessionRef.current = restoredThread
+        applySessionState(restoredThread)
+        addLog({
+          tone: 'info',
+          title: 'Agent context restored',
+          detail: restoredThread.title,
+          screenshot: toLogScreenshot(
+            restoredThread.lastScreenshot ?? restoredThread.deviceSnapshot?.screenshot,
+          ),
+        })
+      })
+      .catch((caught) => {
+        if (cancelled) {
+          return
+        }
+        const message = caught instanceof Error ? caught.message : String(caught)
+        addLog({ tone: 'warn', title: 'Agent context restore skipped', detail: message })
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setThreadStoreReady(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [addLog, threadStore])
+
+  useEffect(() => {
+    if (!threadStoreReady) {
+      return
+    }
+    sessionRef.current.settingsSnapshot = createSettingsSnapshot(currentSettings)
+    void threadStore.save(sessionRef.current)
+  }, [currentSettings, threadStore, threadStoreReady])
+
   function updateConfig<Key extends keyof ModelConfig>(key: Key, value: ModelConfig[Key]) {
     setModelConfig((current) => {
       return { ...current, [key]: value }
@@ -180,13 +237,30 @@ function App() {
     return sessionRef.current
   }
 
+  function applySessionState(session: AgentSession) {
+    setConversation([...session.messages])
+    setTask(session.task)
+    setCurrentApp(session.currentApp)
+    setDeviceState(session.deviceState)
+    setScreenshot(session.lastScreenshot ?? session.deviceSnapshot?.screenshot ?? null)
+  }
+
+  function persistSession(session = sessionRef.current) {
+    if (!threadStoreReady) {
+      return
+    }
+    session.settingsSnapshot = createSettingsSnapshot(currentSettings)
+    void threadStore.save(session)
+  }
+
   function syncConversation() {
-    setConversation([...sessionRef.current.messages])
-    setTask(sessionRef.current.task)
+    applySessionState(sessionRef.current)
+    persistSession()
   }
 
   function resetSession() {
     sessionRef.current = createAgentSession(task)
+    sessionRef.current.settingsSnapshot = createSettingsSnapshot(currentSettings)
     setPendingStep(null)
     syncConversation()
     addLog({ tone: 'info', title: 'Agent context reset' })
@@ -194,6 +268,7 @@ function App() {
 
   function startNewChat() {
     sessionRef.current = createAgentSession('')
+    sessionRef.current.settingsSnapshot = createSettingsSnapshot(currentSettings)
     setChatInput('')
     setPendingStep(null)
     syncConversation()
@@ -575,8 +650,10 @@ function App() {
         <SettingsDialog
           copy={copy}
           languageMode={languageMode}
+          maxSteps={maxSteps}
           onClose={() => setSettingsOpen(false)}
           onLanguageModeChange={setLanguageMode}
+          onMaxStepsChange={setMaxSteps}
           onThemeModeChange={setThemeMode}
           repositoryStats={repositoryStats}
           repositoryStatsStatus={repositoryStatsStatus}
@@ -647,12 +724,10 @@ function App() {
             conversation={conversation}
             copy={copy}
             logsCount={logs.length}
-            maxSteps={maxSteps}
             onAutoExecuteChange={setAutoExecute}
             onChatInputChange={setChatInput}
             onExecutePendingStep={executePendingStep}
             onExportRunLog={exportRunLog}
-            onMaxStepsChange={setMaxSteps}
             onPlanNextStep={planNextStep}
             onResetSession={resetSession}
             onRunAutoLoop={runAutoLoop}
