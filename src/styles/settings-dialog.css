@@ -5,6 +5,7 @@
   display: flex;
   justify-content: flex-end;
   left: 0;
+  overflow: hidden;
   padding: 24px;
   position: fixed;
   right: 0;
@@ -19,8 +20,14 @@
   box-shadow: 0 24px 72px var(--shadow-strong);
   display: grid;
   gap: 16px;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   max-width: 520px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
+  scrollbar-gutter: stable;
   width: min(100%, 520px);
 }
 

@@ -152,6 +152,11 @@
     padding: 12px;
   }
 
+  .settings-panel {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
   .repository-stats {
     grid-template-columns: 1fr;
   }
