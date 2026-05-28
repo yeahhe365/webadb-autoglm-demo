@@ -138,6 +138,13 @@ export type CustomToolAction = {
   reason?: string
 }
 
+export type ViewScreenshotAction = {
+  action: 'view_screenshot'
+  ref?: string
+  step?: number
+  reason?: string
+}
+
 export type ExecutableAtomicAction =
   | TapAction
   | SwipeAction
@@ -196,6 +203,7 @@ export type AgentAction =
   | InteractAction
   | CallApiAction
   | CustomToolAction
+  | ViewScreenshotAction
   | SequenceAction
   | RepeatAction
   | DoneAction

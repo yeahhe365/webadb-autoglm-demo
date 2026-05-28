@@ -16,6 +16,7 @@ describe('actionAliases', () => {
     expect(canonicalActionName('Click At')).toBe('tap')
     expect(canonicalActionName('repeat-action')).toBe('repeat')
     expect(canonicalActionName('Open URL')).toBe('open_url')
+    expect(canonicalActionName('recall screenshot')).toBe('view_screenshot')
   })
 
   it('normalizes supported Android key aliases', () => {

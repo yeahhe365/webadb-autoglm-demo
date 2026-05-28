@@ -105,6 +105,22 @@ describe('parseModelAction', () => {
       tool: 'lookup_order',
       input: { id: '123' },
     })
+
+    expect(
+      parseModelAction(
+        [
+          '<function_calls>',
+          '<invoke name="view_screenshot">',
+          '<parameter name="ref">step-7</parameter>',
+          '</invoke>',
+          '</function_calls>',
+        ].join(''),
+        screen,
+      ),
+    ).toEqual({
+      action: 'view_screenshot',
+      ref: 'step-7',
+    })
   })
 
   it('parses multiple mobilerun XML invokes as one sequence action', () => {
@@ -176,6 +192,21 @@ describe('validateAction', () => {
     expect(validateAction({ action: 'wait', ms: 70000 }, screen)).toEqual({
       action: 'wait',
       ms: 10000,
+    })
+  })
+
+  it('accepts screenshot recall actions by ref or step', () => {
+    expect(validateAction({ action: 'view_screenshot', ref: '#4' }, screen)).toEqual({
+      action: 'view_screenshot',
+      ref: '#4',
+    })
+    expect(validateAction({ action: 'recall_screenshot', step: '5' }, screen)).toEqual({
+      action: 'view_screenshot',
+      step: 5,
+    })
+    expect(parseModelAction('view_screenshot(ref="step-6")', screen)).toEqual({
+      action: 'view_screenshot',
+      ref: 'step-6',
     })
   })
 
@@ -291,6 +322,13 @@ describe('validateAction', () => {
       validateAction({
         action: 'sequence',
         actions: [{ action: 'tap', x: 100, y: 200 }, { action: 'done' }],
+      }, screen),
+    ).toThrow('cannot be used inside a composite action')
+
+    expect(() =>
+      validateAction({
+        action: 'sequence',
+        actions: [{ action: 'view_screenshot', step: 1 }],
       }, screen),
     ).toThrow('cannot be used inside a composite action')
 
@@ -515,6 +553,9 @@ describe('buildActionPreview', () => {
     )
     expect(buildActionPreview({ action: 'call_api', instruction: 'summarize' })).toBe(
       'call api: summarize',
+    )
+    expect(buildActionPreview({ action: 'view_screenshot', step: 4 })).toBe(
+      'view screenshot step #4',
     )
   })
 })

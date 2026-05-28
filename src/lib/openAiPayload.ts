@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   CompletionRequest,
   FinalResponseRequest,
+  PromptScreenshotAttachment,
   UserContent,
 } from './openAiTypes'
 import { formatPromptHistoryItem } from './promptContextFormatting'
@@ -23,6 +24,7 @@ export function buildChatCompletionPayload({
   model,
   task,
   conversation,
+  recalledScreenshots,
   screenshotDataUrl,
   screen,
   deviceScreen,
@@ -47,6 +49,7 @@ export function buildChatCompletionPayload({
   | 'model'
   | 'task'
   | 'conversation'
+  | 'recalledScreenshots'
   | 'screenshotDataUrl'
   | 'screen'
   | 'deviceScreen'
@@ -104,22 +107,17 @@ export function buildChatCompletionPayload({
       const lastUser = messages[lastUserIndex]
       if (lastUser.role === 'user') {
         const text = userContentText(lastUser.content)
-        lastUser.content = [
-          {
-            type: 'text',
-            text: [text, context].filter(Boolean).join('\n\n'),
-          },
-          {
-            type: 'image_url',
-            image_url: { url: screenshotDataUrl },
-          },
-        ]
+        lastUser.content = multimodalUserContent(
+          [text, context].filter(Boolean).join('\n\n'),
+          screenshotDataUrl,
+          recalledScreenshots,
+        )
       }
     } else {
-      messages.push(multimodalUserMessage(context, screenshotDataUrl))
+      messages.push(multimodalUserMessage(context, screenshotDataUrl, recalledScreenshots))
     }
   } else {
-    messages.push(multimodalUserMessage(context, screenshotDataUrl))
+    messages.push(multimodalUserMessage(context, screenshotDataUrl, recalledScreenshots))
   }
 
   const payload: ChatCompletionPayload = {
@@ -278,20 +276,53 @@ function buildFinalResponseContext({
   return lines.join('\n')
 }
 
-function multimodalUserMessage(text: string, screenshotDataUrl: string): ChatMessage {
+function multimodalUserMessage(
+  text: string,
+  screenshotDataUrl: string,
+  recalledScreenshots?: readonly PromptScreenshotAttachment[],
+): ChatMessage {
   return {
     role: 'user',
-    content: [
-      {
-        type: 'text',
-        text,
-      },
-      {
-        type: 'image_url',
-        image_url: { url: screenshotDataUrl },
-      },
-    ],
+    content: multimodalUserContent(text, screenshotDataUrl, recalledScreenshots),
   }
+}
+
+function multimodalUserContent(
+  text: string,
+  screenshotDataUrl: string,
+  recalledScreenshots: readonly PromptScreenshotAttachment[] = [],
+): Exclude<UserContent, string> {
+  return [
+    {
+      type: 'text',
+      text,
+    },
+    {
+      type: 'image_url',
+      image_url: { url: screenshotDataUrl },
+    },
+    ...recalledScreenshots.flatMap((screenshot) => [
+      {
+        type: 'text' as const,
+        text: formatRecalledScreenshotAttachment(screenshot),
+      },
+      {
+        type: 'image_url' as const,
+        image_url: { url: screenshot.dataUrl },
+      },
+    ]),
+  ]
+}
+
+function formatRecalledScreenshotAttachment(screenshot: PromptScreenshotAttachment) {
+  return [
+    `Recalled screenshot attachment: ${screenshot.label}.`,
+    screenshot.currentApp ? `App: ${screenshot.currentApp}.` : null,
+    screenshot.step === undefined ? null : `Step: #${screenshot.step}.`,
+    `Image size: ${screenshot.screen.width}x${screenshot.screen.height}.`,
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function toChatMessage(message: AgentConversationMessage): ChatMessage {

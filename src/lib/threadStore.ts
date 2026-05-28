@@ -1,4 +1,10 @@
-import type { AgentSettingsSnapshot, AgentThread } from './agentThread'
+import {
+  MAX_THREAD_SCREENSHOT_REFERENCES,
+  type AgentRecalledScreenshot,
+  type AgentScreenshotReference,
+  type AgentSettingsSnapshot,
+  type AgentThread,
+} from './agentThread'
 import type { ModelConfig } from './openAiTypes'
 import { compactScreenshotForMemory } from './screenshot'
 import { truncateOptionalRetainedText, truncateRetainedText } from './textRetention'
@@ -341,6 +347,7 @@ function cloneThreadForPersistence(thread: AgentThread): AgentThread {
       truncateRetainedText(value, MAX_PERSISTED_EXECUTION_RESULT_CHARS),
     ),
     memory: thread.memory.map((value) => truncateRetainedText(value, MAX_PERSISTED_MESSAGE_CHARS)),
+    screenshotReferences: cloneScreenshotReferences(thread.screenshotReferences ?? []),
     history: thread.history.slice(-MAX_PERSISTED_HISTORY_ITEMS).map((item) => ({
       ...item,
       executionResult: truncateOptionalRetainedText(
@@ -397,7 +404,29 @@ function cloneThreadForPersistence(thread: AgentThread): AgentThread {
     delete clone.deviceSnapshot
   }
 
+  if (thread.activeScreenshotRecall) {
+    clone.activeScreenshotRecall = cloneRecalledScreenshot(thread.activeScreenshotRecall)
+  } else {
+    delete clone.activeScreenshotRecall
+  }
+
   return compactThreadForMemory(clone)
+}
+
+function cloneScreenshotReferences(references: readonly AgentScreenshotReference[]) {
+  return references.slice(-MAX_THREAD_SCREENSHOT_REFERENCES).map((reference) => ({
+    ...reference,
+    deviceState: cloneValue(reference.deviceState),
+    screenshot: compactScreenshotForMemory(reference.screenshot),
+  }))
+}
+
+function cloneRecalledScreenshot(recall: AgentRecalledScreenshot): AgentRecalledScreenshot {
+  return {
+    ...recall,
+    deviceState: cloneValue(recall.deviceState),
+    screenshot: compactScreenshotForMemory(recall.screenshot),
+  }
 }
 
 function compactThreadEvents(events: AgentThread['events']) {
@@ -466,6 +495,10 @@ function compactThreadForMemory(thread: AgentThread): AgentThread {
       ...thread.deviceSnapshot,
       screenshot: compactScreenshotForMemory(thread.deviceSnapshot.screenshot),
     }
+  }
+  thread.screenshotReferences = cloneScreenshotReferences(thread.screenshotReferences ?? [])
+  if (thread.activeScreenshotRecall) {
+    thread.activeScreenshotRecall = cloneRecalledScreenshot(thread.activeScreenshotRecall)
   }
 
   for (const turn of thread.turns) {

@@ -223,6 +223,13 @@ describe('PhoneStage', () => {
     expect(responsiveCss).toMatch(/\.phone-frame\s*\{[\s\S]*max-height:\s*78vh/)
   })
 
+  it('keeps the empty phone preview the same size as the screenshot preview', () => {
+    expect(phoneStageCss).not.toMatch(/\.phone-stage-empty\s*\{[\s\S]*min-height/)
+    expect(phoneStageCss).not.toMatch(/\.phone-stage-empty\s+\.phone-frame\s*\{/)
+    expect(responsiveCss).not.toMatch(/\.phone-stage-empty\s*\{[\s\S]*min-height/)
+    expect(responsiveCss).not.toMatch(/\.phone-stage-empty\s+\.phone-frame\s*\{/)
+  })
+
   it('opens the middle phone in fullscreen and exits with Escape', () => {
     render(
       <PhoneStage

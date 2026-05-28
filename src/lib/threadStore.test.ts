@@ -4,6 +4,8 @@ import type { AgentAction } from './actionTypes'
 import {
   addThreadEvent,
   createAgentThread,
+  recallThreadScreenshot,
+  recordThreadScreenshot,
   recordThreadTurnExecution,
   recordThreadUserMessage,
   startThreadTurn,
@@ -93,6 +95,14 @@ describe('thread store', () => {
       deviceState: { app: 'Chrome' },
       screenshot,
     }
+    recordThreadScreenshot(thread, {
+      step: 1,
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome' },
+      screenshot,
+      now: 1200,
+    })
+    recallThreadScreenshot(thread, { action: 'view_screenshot', step: 1 }, { now: 1300 })
 
     await store.save(thread)
     const loaded = await store.load('thread-screenshot')
@@ -111,6 +121,16 @@ describe('thread store', () => {
     expect(loaded?.events.find((event) => event.type === 'assistant_action')).not.toHaveProperty(
       'modelOutput',
     )
+    expect(loaded?.screenshotReferences[0].screenshot).toEqual({
+      dataUrl: 'data:image/png;base64,model',
+      modelScreen: { width: 540, height: 1200 },
+      screen: { width: 1080, height: 2400 },
+    })
+    expect(loaded?.activeScreenshotRecall?.screenshot).toEqual({
+      dataUrl: 'data:image/png;base64,model',
+      modelScreen: { width: 540, height: 1200 },
+      screen: { width: 1080, height: 2400 },
+    })
   })
 
   it('persists compact thread records instead of retaining old large fields', async () => {

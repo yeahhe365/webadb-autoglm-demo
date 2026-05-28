@@ -8,13 +8,21 @@ export type DeviceHomeOptionsSectionProps = {
     'onConfirmSensitiveActionsChange' | 'onPreferAdbKeyboardChange' | 'onUnrestrictedModeChange'
   >
   copy: AppCopy
+  memoryEnabled: boolean
+  onMemoryEnabledChange: (value: boolean) => void
+  onScreenBlackoutDuringAutoControlChange: (value: boolean) => void
   options: Pick<DeviceControlOptions, 'confirmSensitiveActions' | 'preferAdbKeyboard' | 'unrestrictedMode'>
+  screenBlackoutDuringAutoControl: boolean
 }
 
 export function DeviceHomeOptionsSection({
   actions,
   copy,
+  memoryEnabled,
+  onMemoryEnabledChange,
+  onScreenBlackoutDuringAutoControlChange,
   options,
+  screenBlackoutDuringAutoControl,
 }: DeviceHomeOptionsSectionProps) {
   return (
     <section className="config-panel-group" aria-label={copy.deviceOptions}>
@@ -47,6 +55,22 @@ export function DeviceHomeOptionsSection({
             onChange={(event) => actions.onUnrestrictedModeChange(event.target.checked)}
           />
           <span>{copy.unrestrictedMode}</span>
+        </label>
+        <label className="toggle" title={copy.memoryHelp}>
+          <input
+            type="checkbox"
+            checked={memoryEnabled}
+            onChange={(event) => onMemoryEnabledChange(event.target.checked)}
+          />
+          <span>{copy.memory}</span>
+        </label>
+        <label className="toggle" title={copy.screenBlackoutDuringAutoControlHelp}>
+          <input
+            type="checkbox"
+            checked={screenBlackoutDuringAutoControl}
+            onChange={(event) => onScreenBlackoutDuringAutoControlChange(event.target.checked)}
+          />
+          <span>{copy.screenBlackoutDuringAutoControl}</span>
         </label>
       </div>
     </section>

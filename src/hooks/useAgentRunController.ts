@@ -10,6 +10,7 @@ import {
   type AgentSession,
   type AgentStep,
 } from '../lib/agent'
+import { recordThreadStatus } from '../lib/agentThread'
 import type { AgentAction } from '../lib/actionTypes'
 import type { AppCopy } from '../lib/appCopy'
 import type { ActionProtocol } from '../lib/actionProtocol'
@@ -116,11 +117,14 @@ export function useAgentRunController({
           task: ensureSession().task,
         })
         addLog({ tone: 'ok', title: copy.taskComplete, detail: finalResponse })
+        recordThreadStatus(ensureSession(), 'done', finalResponse)
         setPendingStep(null)
         syncConversation()
         return
       }
 
+      recordThreadStatus(ensureSession(), 'running', copy.executeActionTask)
+      syncConversation()
       const executionStartedAt = performance.now()
       const result = await actionToolRegistry.execute(pendingStep.executionAction, {
         device: backend,
@@ -134,6 +138,7 @@ export function useAgentRunController({
         },
         customTools,
         secrets,
+        screenshotRecallThread: ensureSession(),
       })
       recordAgentStepExecutionDuration(pendingStep, performance.now() - executionStartedAt)
       pendingStep.toolName = result.toolName
@@ -152,6 +157,13 @@ export function useAgentRunController({
       })
       if (!result.success) {
         setError(result.summary)
+        recordThreadStatus(
+          ensureSession(),
+          result.safetyDecision === 'take_over' ? 'awaiting_takeover' : 'awaiting_review',
+          result.summary,
+        )
+      } else {
+        recordThreadStatus(ensureSession(), 'idle')
       }
       await device.refreshDisplayedSnapshot()
       setPendingStep(null)
@@ -187,6 +199,8 @@ export function useAgentRunController({
     await runTask('run-agent', copy.runAgentTask, async () => {
       let screenBlackoutActive = false
       try {
+        recordThreadStatus(session, 'running', copy.runAgentTask)
+        syncConversation()
         screenBlackoutActive = await startScreenBlackoutForAutoControl({
           addLog,
           backend,
@@ -238,23 +252,37 @@ export function useAgentRunController({
 
         if (result.status === 'done') {
           addLog({ tone: 'ok', title: copy.taskComplete, detail: result.finalResponse })
+          recordThreadStatus(session, 'done', result.finalResponse)
         }
         if (result.status === 'max_steps') {
           addLog({ tone: 'warn', title: copy.maxStepsReached, detail: `${maxSteps} steps` })
+          recordThreadStatus(session, 'awaiting_review', `${copy.maxStepsReached}: ${maxSteps}`)
         }
         if (result.status === 'stopped') {
           addLog({ tone: 'warn', title: copy.runStopped })
+          recordThreadStatus(session, 'stopped', copy.runStopped)
+        }
+        if (result.status === 'awaiting_review') {
+          addLog({ tone: 'warn', title: copy.stepStatusAwaitingReview, detail: result.reason })
+          recordThreadStatus(session, 'awaiting_review', result.reason)
         }
         if (result.status === 'awaiting_takeover') {
           addLog({ tone: 'warn', title: copy.manualTakeoverRequested })
+          recordThreadStatus(session, 'awaiting_takeover', result.reason)
         }
         if (result.status === 'loop_guard') {
           addLog({ tone: 'warn', title: copy.loopGuardStopped, detail: result.reason })
+          recordThreadStatus(session, 'stopped', result.reason ?? copy.loopGuardStopped)
         }
         if (result.status !== 'awaiting_takeover') {
           setPendingStep(null)
         }
         syncConversation()
+      } catch (caught) {
+        const message = formatCaughtError(caught)
+        recordThreadStatus(session, 'error', message)
+        syncConversation()
+        throw caught
       } finally {
         if (screenBlackoutActive) {
           await stopScreenBlackoutForAutoControl({ addLog, backend, copy })

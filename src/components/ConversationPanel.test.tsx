@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DeviceScreenshot } from '../adapters/deviceTypes'
 import type { AgentStep } from '../lib/agent'
@@ -19,6 +20,11 @@ const screenshot: DeviceScreenshot = {
   dataUrl: 'data:image/png;base64,abc',
   screen: { width: 1080, height: 2400 },
 }
+const agentStepCardCss = readFileSync('src/styles/agent-step-card.css', 'utf8')
+const chatComposerCss = readFileSync('src/styles/chat-composer.css', 'utf8')
+const chatPanelCss = readFileSync('src/styles/chat-panel.css', 'utf8')
+const chatHistoryCss = readFileSync('src/styles/chat-history.css', 'utf8')
+const conversationPanelCss = readFileSync('src/styles/conversation-panel.css', 'utf8')
 
 function renderConversationPanel(
   overrides: Partial<Parameters<typeof ConversationPanel>[0]> = {},
@@ -57,8 +63,21 @@ describe('ConversationPanel', () => {
 
     const title = screen.getByRole('heading', { name: 'Chat' }).closest('.panel-title')
     expect(title).toBeTruthy()
+    const historyToggle = within(title as HTMLElement).getByRole('button', {
+      name: /open history sidebar/i,
+    })
+    const toggleIcon = historyToggle.querySelector('svg')
+    expect(historyToggle.className).toContain('chat-history-toggle')
+    expect(historyToggle.className).not.toContain('icon-button')
+    expect(toggleIcon?.getAttribute('viewBox')).toBe('0 0 24 24')
+    expect(toggleIcon?.querySelectorAll('line')).toHaveLength(2)
+    expect(toggleIcon?.querySelector('line[x1="4"][x2="20"][y1="8"][y2="8"]')).toBeTruthy()
+    expect(
+      toggleIcon?.querySelector('line[x1="4"][x2="14"][y1="16"][y2="16"]'),
+    ).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Chat' }).className).toContain('visually-hidden')
+    expect((title as HTMLElement).querySelector('.panel-title-main > svg')).toBeNull()
     expect(within(title as HTMLElement).getByRole('button', { name: /new chat/i })).toBeTruthy()
-    expect(within(title as HTMLElement).getByRole('button', { name: /open history sidebar/i })).toBeTruthy()
 
     const sendButton = screen.getByRole('button', { name: /^send$/i })
     expect(sendButton.closest('.chat-composer')).toBeTruthy()
@@ -194,6 +213,31 @@ describe('ConversationPanel', () => {
     )
   })
 
+  it('uses the AMC-style chat input shell', () => {
+    expect(chatComposerCss).toMatch(
+      /\.chat-input-frame\s*\{[\s\S]*background:\s*var\(--field-bg\)/,
+    )
+    expect(chatComposerCss).toMatch(
+      /\.chat-input-frame\s*\{[\s\S]*border-radius:\s*26px/,
+    )
+    expect(chatComposerCss).toMatch(
+      /\.chat-input-frame\s*\{[\s\S]*display:\s*flex/,
+    )
+    expect(chatComposerCss).toMatch(
+      /\.chat-input-frame\s*\{[\s\S]*flex-direction:\s*column/,
+    )
+    expect(chatComposerCss).toMatch(
+      /\.chat-input-frame:focus-within\s*\{[\s\S]*border-color:\s*var\(--accent\)/,
+    )
+    expect(chatComposerCss).toMatch(/\.chat-input\s*\{[\s\S]*min-height:\s*26px/)
+    expect(chatComposerCss).toMatch(/\.chat-input\s*\{[\s\S]*border-radius:\s*0/)
+    expect(chatComposerCss).toMatch(
+      /\.chat-input:focus,\s*[\r\n]+\.chat-input:focus-visible\s*\{[\s\S]*box-shadow:\s*none/,
+    )
+    expect(chatComposerCss).toMatch(/\.chat-send\s*\{[\s\S]*height:\s*40px/)
+    expect(chatComposerCss).not.toContain('backdrop-filter')
+  })
+
   it('renders chat messages as sanitized markdown', async () => {
     renderConversationPanel({
       conversation: [
@@ -235,7 +279,14 @@ describe('ConversationPanel', () => {
         deviceState: { app: 'Settings', packageName: 'com.android.settings' },
         screenshot,
       },
-      timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+      timing: {
+        captureMs: 1,
+        currentAppMs: 2,
+        executionMs: 890,
+        modelMs: 3,
+        parseMs: 4,
+        totalMs: 2010,
+      },
       now: 1100,
     })
     recordThreadTurnExecution(thread, turn.id, {
@@ -258,17 +309,44 @@ describe('ConversationPanel', () => {
     expect(step.querySelector('.agent-step-action-icon svg')).toBeTruthy()
     expect(within(step).getByText('Executed')).toBeTruthy()
     expect(step.querySelector('.agent-step-quick-meta')).toBeTruthy()
-    expect(within(step).getByText('10 ms')).toBeTruthy()
-    expect(within(step).getByText('Settings')).toBeTruthy()
-    expect(within(step).getByText('tap')).toBeTruthy()
-    expect(within(step).queryByText('Total 10 ms')).toBeNull()
+    expect(within(step).getByText('2 s')).toBeTruthy()
+    expect(within(step).queryByText('Total 2010 ms')).toBeNull()
+    expect(within(step).queryByText('Tool 890 ms')).toBeNull()
+    expect(within(step).queryByText('Settings')).toBeNull()
+    expect(within(step).queryByText('tap')).toBeNull()
     expect(within(step).queryByText('input tap 120 240')).toBeNull()
     fireEvent.click(within(step).getByText('Details'))
-    expect(within(step).getByText('Total 10 ms')).toBeTruthy()
+    expect(within(step).getByText('Total 2010 ms')).toBeTruthy()
+    expect(within(step).getByText('Tool 890 ms')).toBeTruthy()
+    expect(within(step).getByText(/Current app: Settings/)).toBeTruthy()
     expect(step.textContent).toContain('Tool: tap')
     expect(within(step).getByText('tap (120, 240) - open Wi-Fi')).toBeTruthy()
     expect(within(step).getByText('input tap 120 240')).toBeTruthy()
     expect(within(chatStream).queryAllByText('input tap 120 240')).toHaveLength(1)
+  })
+
+  it('stretches action cards across the chat stream', () => {
+    expect(agentStepCardCss).toMatch(/\.agent-step-card\s*\{[^}]*justify-self:\s*stretch/)
+    expect(agentStepCardCss).toMatch(/\.agent-step-card\s*\{[^}]*width:\s*100%/)
+    expect(agentStepCardCss).not.toMatch(/\.agent-step-card\s*\{[^}]*width:\s*fit-content/)
+    expect(conversationPanelCss).toMatch(
+      /\.chat-stream\s*>\s*\.pending-action\s*\{[^}]*width:\s*100%/,
+    )
+  })
+
+  it('styles the chat sidebar toggle like AMC', () => {
+    expect(chatHistoryCss).toMatch(/\.chat-history-toggle\s*\{[^}]*background:\s*transparent/)
+    expect(chatHistoryCss).toMatch(/\.chat-history-toggle\s*\{[^}]*border-radius:\s*12px/)
+    expect(chatHistoryCss).toMatch(/\.chat-history-toggle\s*\{[^}]*height:\s*36px/)
+    expect(chatHistoryCss).toMatch(/\.chat-history-toggle\s*\{[^}]*width:\s*36px/)
+    expect(chatHistoryCss).toMatch(
+      /\.chat-history-toggle\s*\{[^}]*cubic-bezier\(0\.19,\s*1,\s*0\.22,\s*1\)/,
+    )
+  })
+
+  it('does not draw a divider below the chat header', () => {
+    expect(chatPanelCss).not.toMatch(/\.chat-shell-header\s*\{[^}]*border-bottom/)
+    expect(chatPanelCss).not.toMatch(/\.chat-shell-header\s*\{[^}]*box-shadow/)
   })
 
   it('submits chat with Enter while keeping Shift Enter for multiline input', () => {

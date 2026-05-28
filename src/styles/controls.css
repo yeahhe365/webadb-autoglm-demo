@@ -9,8 +9,10 @@ label {
 input,
 select,
 textarea {
-  background: var(--field-bg);
-  border: 1px solid var(--border-strong);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 10%, transparent), transparent),
+    var(--field-bg);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 88%, transparent);
   border-radius: 8px;
   box-sizing: border-box;
   box-shadow: 0 1px 0 color-mix(in srgb, var(--on-primary) 52%, transparent) inset;
@@ -131,7 +133,7 @@ textarea:focus {
 button {
   align-items: center;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 18%, transparent), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 20%, transparent), transparent),
     var(--button-bg);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -150,7 +152,7 @@ button {
     border-color 140ms ease,
     box-shadow 140ms ease,
     color 140ms ease,
-    transform 120ms ease;
+    transform 140ms var(--ease-productive);
 }
 
 button:hover:not(:disabled) {
@@ -160,7 +162,7 @@ button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--border-strong) 72%, var(--accent));
   box-shadow:
     0 1px 0 color-mix(in srgb, var(--on-primary) 42%, transparent) inset,
-    0 8px 22px color-mix(in srgb, var(--shadow) 68%, transparent);
+    0 10px 26px color-mix(in srgb, var(--shadow) 70%, transparent);
 }
 
 button:active:not(:disabled) {
@@ -180,12 +182,12 @@ button:disabled {
 
 button.primary {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 16%, transparent), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 18%, transparent), transparent),
     var(--primary);
   border-color: var(--primary);
   box-shadow:
     0 1px 0 color-mix(in srgb, var(--on-primary) 24%, transparent) inset,
-    0 10px 24px color-mix(in srgb, var(--primary) 22%, transparent);
+    0 12px 30px color-mix(in srgb, var(--primary) 24%, transparent);
   color: var(--on-primary);
 }
 

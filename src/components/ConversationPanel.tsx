@@ -4,6 +4,7 @@ import type { BusyTask } from '../lib/busyTask'
 import type { InteractionStreamItem } from '../lib/interactionStream'
 import type { AgentConversationMessage } from '../lib/openAiTypes'
 import type { AgentThreadSummary } from '../lib/threadStore'
+import type { AgentSessionSummary } from '../hooks/useAgentSessionHistory'
 import { ChatPanel } from './ChatPanel'
 
 export type ConversationPanelProps = {
@@ -15,6 +16,7 @@ export type ConversationPanelProps = {
   copy: AppCopy
   historySidebarOpen: boolean
   pendingStep: AgentStep | null
+  sessionSummary?: AgentSessionSummary
   threadSummaries: AgentThreadSummary[]
   onChatInputChange: (value: string) => void
   onCloseHistorySidebar: () => void
@@ -45,6 +47,7 @@ export function ConversationPanel({
   onSubmitChatMessage,
   onToggleHistorySidebar,
   pendingStep,
+  sessionSummary,
   threadSummaries,
 }: ConversationPanelProps) {
   return (
@@ -57,6 +60,7 @@ export function ConversationPanel({
         interactionItems={interactionItems}
         copy={copy}
         historySidebarOpen={historySidebarOpen}
+        sessionSummary={sessionSummary}
         threadSummaries={threadSummaries}
         onChatInputChange={onChatInputChange}
         onCloseHistorySidebar={onCloseHistorySidebar}

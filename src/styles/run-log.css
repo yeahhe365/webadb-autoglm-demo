@@ -67,8 +67,8 @@
 
 .log-entry {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg-elevated) 42%, transparent), transparent),
-    color-mix(in srgb, var(--subtle-bg) 76%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 10%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
   border-left: 4px solid var(--border-strong);
   border-radius: 8px;
@@ -141,8 +141,8 @@
 
 .step-timeline {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 38%, transparent), transparent),
-    color-mix(in srgb, var(--subtle-bg) 88%, var(--panel-bg));
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 10%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 82%, var(--panel-bg));
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 8px;
   display: grid;

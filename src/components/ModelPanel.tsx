@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { BrainCircuit, Eye, EyeOff } from 'lucide-react'
+import { Bot, Eye, EyeOff } from 'lucide-react'
 import type { AppCopy } from '../lib/appCopy'
 import type { ActionProtocol } from '../lib/actionProtocol'
 import type { ModelConfig } from '../lib/openAiTypes'
@@ -30,7 +30,7 @@ export function ModelPanel({
   return (
     <>
       <div className="panel-title">
-        <BrainCircuit size={18} />
+        <Bot size={18} />
         <h2>{copy.model}</h2>
       </div>
       <div className="model-box">

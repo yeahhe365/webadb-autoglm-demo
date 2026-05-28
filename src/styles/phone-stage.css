@@ -1,15 +1,21 @@
 .phone-stage {
   align-items: center;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg-elevated) 54%, transparent), transparent),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 38%),
+    linear-gradient(315deg, color-mix(in srgb, var(--primary) 9%, transparent), transparent 42%),
+    color-mix(in srgb, var(--subtle-bg) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 8px;
+  box-shadow:
+    0 18px 44px color-mix(in srgb, var(--shadow-panel) 62%, transparent),
+    0 1px 0 color-mix(in srgb, var(--on-primary) 22%, transparent) inset;
   display: flex;
   justify-content: center;
   min-height: 660px;
   overflow: hidden;
   padding: 12px;
   position: relative;
-}
-
-.phone-stage-empty {
-  min-height: 430px;
 }
 
 .phone-stage-fullscreen::before {
@@ -25,11 +31,14 @@
 
 .phone-frame {
   aspect-ratio: 9 / 20;
-  background: var(--phone-screen);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 4%, transparent), transparent 26%),
+    var(--phone-screen);
   border: 8px solid var(--phone-shell);
   border-radius: 28px;
   box-shadow:
-    0 30px 80px color-mix(in srgb, var(--shadow-strong) 54%, transparent),
+    0 34px 86px color-mix(in srgb, var(--shadow-strong) 56%, transparent),
+    0 14px 38px color-mix(in srgb, var(--accent) 10%, transparent),
     0 0 0 1px color-mix(in srgb, var(--on-primary) 8%, transparent) inset,
     0 0 0 1px color-mix(in srgb, var(--phone-shell) 90%, transparent);
   max-height: 72vh;
@@ -39,9 +48,13 @@
   width: min(100%, 32.4vh);
 }
 
-.phone-stage-empty .phone-frame {
-  max-height: 460px;
-  width: min(100%, 240px);
+.phone-frame::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 32%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 9;
 }
 
 .phone-frame::before {
@@ -72,6 +85,10 @@
 }
 
 .phone-frame.phone-frame-fullscreen::before {
+  display: none;
+}
+
+.phone-frame.phone-frame-fullscreen::after {
   display: none;
 }
 
@@ -107,7 +124,8 @@
 
 .phone-screen-placeholder {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 4%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 6%, transparent), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 48%),
     var(--phone-screen);
   display: grid;
   height: 100%;

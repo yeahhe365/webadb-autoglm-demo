@@ -44,6 +44,15 @@ export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
     }
 
     const upstreamUrl = `${normalizeBaseUrl(body.baseUrl)}/chat/completions`
+    const abortController = new AbortController()
+    const abortUpstream = () => {
+      if (!abortController.signal.aborted) {
+        abortController.abort()
+      }
+    }
+    request.once('aborted', abortUpstream)
+    response.once('close', abortUpstream)
+
     let upstreamResponse
     try {
       upstreamResponse = await fetcher(upstreamUrl, {
@@ -52,15 +61,26 @@ export function createOpenAiProxyHandler(fetcher = fetch, options = {}) {
           Authorization: `Bearer ${body.apiKey}`,
           'Content-Type': 'application/json',
         },
+        signal: abortController.signal,
         body: JSON.stringify(body.payload),
       })
     } catch (caught) {
+      request.off('aborted', abortUpstream)
+      response.off('close', abortUpstream)
+      if (abortController.signal.aborted) {
+        return
+      }
       const message = caught instanceof Error ? caught.message : String(caught)
       sendJson(response, 502, { error: { message: `Model API request failed: ${message}` } })
       return
     }
 
-    await forwardUpstreamResponse(response, upstreamResponse)
+    await forwardUpstreamResponse(response, upstreamResponse, {
+      onFinished: () => {
+        request.off('aborted', abortUpstream)
+        response.off('close', abortUpstream)
+      },
+    })
   }
 }
 
@@ -151,7 +171,7 @@ function isRequestBodyTooLargeError(error) {
   return error instanceof RequestBodyTooLargeError
 }
 
-async function forwardUpstreamResponse(response, upstreamResponse) {
+async function forwardUpstreamResponse(response, upstreamResponse, { onFinished } = {}) {
   response.statusCode = upstreamResponse.status
   const contentType = upstreamResponse.headers.get('content-type')
   if (contentType) {
@@ -160,6 +180,7 @@ async function forwardUpstreamResponse(response, upstreamResponse) {
 
   if (!upstreamResponse.body) {
     response.end()
+    onFinished?.()
     return
   }
 
@@ -174,7 +195,12 @@ async function forwardUpstreamResponse(response, upstreamResponse) {
     }
     response.end()
   } catch (caught) {
-    response.destroy(caught instanceof Error ? caught : new Error(String(caught)))
+    if (!response.destroyed) {
+      response.destroy(caught instanceof Error ? caught : new Error(String(caught)))
+    }
+  } finally {
+    onFinished?.()
+    reader.releaseLock()
   }
 }
 

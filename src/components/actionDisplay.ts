@@ -8,6 +8,7 @@ import {
   Clock,
   Hand,
   Home,
+  Image,
   Keyboard,
   KeyRound,
   Link,
@@ -44,6 +45,7 @@ const ACTION_ICONS = {
   take_over: Hand,
   tap: MousePointerClick,
   type_secret: KeyRound,
+  view_screenshot: Image,
   wait: Clock,
 } satisfies Record<AgentAction['action'], LucideIcon>
 

@@ -1,6 +1,8 @@
 .doctor-results {
-  background: var(--subtle-bg);
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 82%, var(--panel-bg));
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 8px;
   display: grid;
   gap: 10px;
@@ -19,7 +21,7 @@
 
 .doctor-check {
   align-items: start;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   display: grid;
   gap: 9px;
   grid-template-columns: auto minmax(0, 1fr);

@@ -23,6 +23,7 @@ export const ACTION_ALIASES: Record<string, AgentAction['action']> = {
   press_button: 'key',
   press_home: 'home',
   remember: 'note',
+  recall_screenshot: 'view_screenshot',
   repeat_action: 'repeat',
   repeated_action: 'repeat',
   sequence_actions: 'sequence',
@@ -38,6 +39,9 @@ export const ACTION_ALIASES: Record<string, AgentAction['action']> = {
   type_secret: 'type_secret',
   type_text: 'input_text',
   type_text_direct: 'input_text',
+  view_log_screenshot: 'view_screenshot',
+  view_previous_screenshot: 'view_screenshot',
+  view_screenshot: 'view_screenshot',
 }
 
 const KEY_ALIASES: Record<string, KeyAction['key']> = {

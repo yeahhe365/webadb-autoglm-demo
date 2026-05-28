@@ -43,7 +43,10 @@
 }
 
 .chat-stream > .pending-action {
+  justify-self: stretch;
   margin: 4px 0 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .pending-action-body {

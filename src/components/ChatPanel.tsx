@@ -1,13 +1,10 @@
 import {
+  Activity,
   ArrowDown,
-  Camera,
-  Home,
+  Layers3,
   LoaderCircle,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
   Send,
-  Settings,
   Square,
   SquarePen,
 } from 'lucide-react'
@@ -24,6 +21,7 @@ import {
 import type { AppCopy } from '../lib/appCopy'
 import type { AgentStep } from '../lib/agent'
 import type { BusyTask } from '../lib/busyTask'
+import type { AgentSessionSummary } from '../hooks/useAgentSessionHistory'
 import type { InteractionStreamItem } from '../lib/interactionStream'
 import type { AgentConversationMessage } from '../lib/openAiTypes'
 import type { AgentThreadSummary } from '../lib/threadStore'
@@ -41,6 +39,7 @@ type ChatPanelProps = {
   copy: AppCopy
   historySidebarOpen: boolean
   pendingStep: AgentStep | null
+  sessionSummary?: AgentSessionSummary
   threadSummaries: AgentThreadSummary[]
   onChatInputChange: (value: string) => void
   onCloseHistorySidebar: () => void
@@ -74,6 +73,7 @@ export function ChatPanel({
   onStopRun,
   onSubmitChatMessage,
   onToggleHistorySidebar,
+  sessionSummary,
 }: ChatPanelProps) {
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
   const chatStreamRef = useRef<HTMLDivElement | null>(null)
@@ -90,6 +90,9 @@ export function ChatPanel({
   )
   const activeStepId = isAgentStepBusyTask(busyTask) ? findLatestOpenStepId(visibleItems) : null
   const chatInputRows = Math.min(6, Math.max(1, chatInput.split('\n').length))
+  const sessionStripVisible =
+    Boolean(busyTask) ||
+    Boolean(sessionSummary && shouldShowSessionSummary(sessionSummary))
   const submitChatIfNotEmpty = () => {
     if (!chatIsEmpty) {
       onSubmitChatMessage()
@@ -114,10 +117,6 @@ export function ChatPanel({
   const handleHistoryNewChat = () => {
     handleStartNewChat()
     onCloseHistorySidebar()
-  }
-  const applyQuickPrompt = (prompt: string) => {
-    onChatInputChange(prompt)
-    chatInputRef.current?.focus()
   }
   const focusComposerShell = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target
@@ -187,20 +186,15 @@ export function ChatPanel({
         <div className="panel-title-main">
           <button
             type="button"
-            className="icon-button chat-history-toggle"
+            className="chat-history-toggle"
             aria-expanded={historySidebarOpen}
             aria-label={historySidebarOpen ? copy.closeHistorySidebar : copy.openHistorySidebar}
             title={historySidebarOpen ? copy.closeHistorySidebar : copy.openHistorySidebar}
             onClick={onToggleHistorySidebar}
           >
-            {historySidebarOpen ? (
-              <PanelLeftClose size={20} strokeWidth={2} />
-            ) : (
-              <PanelLeftOpen size={20} strokeWidth={2} />
-            )}
+            <IconSidebarToggle size={18} strokeWidth={2} />
           </button>
-          <MessageSquare size={18} />
-          <h2>{copy.chat}</h2>
+          <h2 className="visually-hidden">{copy.chat}</h2>
         </div>
         <button
           type="button"
@@ -214,6 +208,40 @@ export function ChatPanel({
           {copy.newChat}
         </button>
       </div>
+      {sessionStripVisible && sessionSummary ? (
+        <div className="chat-session-strip" aria-label={copy.sessionState}>
+          <span className={`chat-session-pill status-${sessionSummary.status}`}>
+            {busyTask ? (
+              <LoaderCircle className="chat-run-status-spinner" size={13} />
+            ) : (
+              <Activity size={13} />
+            )}
+            {formatSessionStatus(sessionSummary.status, copy)}
+          </span>
+          {sessionSummary.stepNumber > 0 ? (
+            <span className="chat-session-pill">
+              {copy.sessionStep(sessionSummary.stepNumber)}
+            </span>
+          ) : null}
+          {sessionSummary.pendingUserMessageCount > 0 ? (
+            <span className="chat-session-pill queued">
+              <MessageSquare size={13} />
+              {copy.queuedMessages(sessionSummary.pendingUserMessageCount)}
+            </span>
+          ) : null}
+          {sessionSummary.contextCompactedThroughStep > 0 ? (
+            <span className="chat-session-pill compacted">
+              <Layers3 size={13} />
+              {copy.contextCompactedThroughStep(sessionSummary.contextCompactedThroughStep)}
+            </span>
+          ) : null}
+          {sessionSummary.latestStatusMessage ? (
+            <span className="chat-session-message" title={sessionSummary.latestStatusMessage}>
+              {sessionSummary.latestStatusMessage}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div
         className="chat-stream"
         aria-label={copy.conversation}
@@ -229,16 +257,6 @@ export function ChatPanel({
               <MessageSquare size={22} aria-hidden="true" />
             </div>
             <strong>{copy.noMessages}</strong>
-            <div className="chat-empty-prompts">
-              {copy.quickStartPrompts.map((prompt, index) => (
-                <button type="button" key={prompt} onClick={() => applyQuickPrompt(prompt)}>
-                  <span className="chat-empty-prompt-icon" aria-hidden="true">
-                    {renderQuickPromptIcon(index)}
-                  </span>
-                  <span className="chat-empty-prompt-text">{prompt}</span>
-                </button>
-              ))}
-            </div>
           </div>
         ) : null}
         {visibleItems.map((item) =>
@@ -339,6 +357,32 @@ function resizeComposer(textarea: HTMLTextAreaElement) {
   textarea.style.height = `${Math.min(textarea.scrollHeight, 132)}px`
 }
 
+function IconSidebarToggle({
+  size,
+  strokeWidth,
+}: {
+  size: number
+  strokeWidth: number
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="4" x2="20" y1="8" y2="8" />
+      <line x1="4" x2="14" y1="16" y2="16" />
+    </svg>
+  )
+}
+
 function findLatestOpenStepId(items: readonly InteractionStreamItem[]) {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
@@ -351,6 +395,35 @@ function findLatestOpenStepId(items: readonly InteractionStreamItem[]) {
 
 function isAgentStepBusyTask(busyTask: BusyTask | null) {
   return busyTask?.id === 'execute-action' || busyTask?.id === 'run-agent'
+}
+
+function shouldShowSessionSummary(summary: AgentSessionSummary) {
+  return (
+    summary.status !== 'idle' ||
+    summary.stepNumber > 0 ||
+    summary.pendingUserMessageCount > 0 ||
+    summary.contextCompactedThroughStep > 0
+  )
+}
+
+function formatSessionStatus(status: AgentSessionSummary['status'], copy: AppCopy) {
+  switch (status) {
+    case 'running':
+      return copy.sessionStatusRunning
+    case 'awaiting_review':
+      return copy.sessionStatusAwaitingReview
+    case 'awaiting_takeover':
+      return copy.sessionStatusAwaitingTakeover
+    case 'done':
+      return copy.sessionStatusDone
+    case 'stopped':
+      return copy.sessionStatusStopped
+    case 'error':
+      return copy.sessionStatusError
+    case 'idle':
+    default:
+      return copy.sessionStatusIdle
+  }
 }
 
 function messageToItem(message: AgentConversationMessage): InteractionStreamItem {
@@ -369,14 +442,4 @@ function formatConversationRole(role: 'user' | 'assistant' | 'observation', copy
     return copy.observation
   }
   return copy.user
-}
-
-function renderQuickPromptIcon(index: number) {
-  if (index === 1) {
-    return <Camera size={16} strokeWidth={2} />
-  }
-  if (index === 2) {
-    return <Home size={16} strokeWidth={2} />
-  }
-  return <Settings size={16} strokeWidth={2} />
 }

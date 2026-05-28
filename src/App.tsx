@@ -65,9 +65,6 @@ const SettingsDialog = lazy(() =>
 const TutorialPanel = lazy(() =>
   import('./components/TutorialPanel').then((module) => ({ default: module.TutorialPanel })),
 )
-const ToolboxDialog = lazy(() =>
-  import('./components/ToolboxDialog').then((module) => ({ default: module.ToolboxDialog })),
-)
 
 function App() {
   const settings = useMemo(() => loadSettings(), [])
@@ -118,7 +115,6 @@ function App() {
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
-  const [toolboxOpen, setToolboxOpen] = useState(false)
   const [runLogOpen, setRunLogOpen] = useState(false)
   const runLogDrawerRef = useRef<HTMLDetailsElement | null>(null)
   const { repositoryStats, repositoryStatsStatus } = useRepositoryStats(settingsOpen)
@@ -205,7 +201,7 @@ function App() {
   useDocumentPreferences(themeMode, activeLocale)
   useBusyTaskDocumentTitle(busyTask)
   usePersistedSettings(currentSettings)
-  const modalOverlayOpen = settingsOpen || toolboxOpen || sensitiveActionRequest !== null
+  const modalOverlayOpen = settingsOpen || sensitiveActionRequest !== null
   useEffect(() => {
     if (!modalOverlayOpen) {
       return
@@ -246,6 +242,7 @@ function App() {
     ensureSession,
     interactionItems,
     selectHistoryThread: selectStoredHistoryThread,
+    sessionSummary,
     startNewSession,
     syncConversation,
     threadSummaries,
@@ -381,20 +378,12 @@ function App() {
 
   function openSettings() {
     setTutorialOpen(false)
-    setToolboxOpen(false)
     setSettingsOpen(true)
   }
 
   function toggleTutorial() {
     setSettingsOpen(false)
-    setToolboxOpen(false)
     setTutorialOpen((current) => !current)
-  }
-
-  function openToolbox() {
-    setSettingsOpen(false)
-    setTutorialOpen(false)
-    setToolboxOpen(true)
   }
 
   function toggleRunLog(event: MouseEvent<HTMLElement>) {
@@ -463,15 +452,6 @@ function App() {
           <TutorialPanel copy={copy} onClose={() => setTutorialOpen(false)} />
         ) : null}
 
-        {toolboxOpen ? (
-          <ToolboxDialog
-            actions={device.actions}
-            copy={copy}
-            onClose={() => setToolboxOpen(false)}
-            options={device.options}
-            state={device.state}
-          />
-        ) : null}
       </Suspense>
 
       <SensitiveActionDialog
@@ -505,7 +485,6 @@ function App() {
           onModelConfigChange={updateConfig}
           onActionProtocolChange={setActionProtocol}
           onMemoryEnabledChange={setMemoryEnabled}
-          onOpenToolbox={openToolbox}
           onScreenBlackoutDuringAutoControlChange={setScreenBlackoutDuringAutoControl}
           onSelectTarget={openConfigTarget}
           onStreamResponsesChange={setStreamResponses}
@@ -537,6 +516,7 @@ function App() {
           interactionItems={interactionItems}
           copy={copy}
           historySidebarOpen={historySidebarOpen}
+          sessionSummary={sessionSummary}
           onChatInputChange={setChatInput}
           onCloseHistorySidebar={() => setHistorySidebarOpen(false)}
           onDeleteThread={(threadId) => {

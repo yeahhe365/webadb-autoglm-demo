@@ -1,10 +1,81 @@
+.installed-app-dialog-page {
+  align-items: center;
+  background: color-mix(in srgb, var(--overlay) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.08);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  overflow: hidden;
+  padding: 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 45;
+}
+
+.installed-app-dialog-panel {
+  background: var(--panel-bg);
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 25px 50px -12px color-mix(in srgb, var(--shadow-strong) 88%, transparent);
+  display: grid;
+  gap: 14px;
+  max-height: min(calc(100vh - 48px), 720px);
+  max-height: min(calc(100dvh - 48px), 720px);
+  max-width: 620px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px;
+  width: min(92vw, 620px);
+}
+
+.installed-app-dialog-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.installed-app-dialog-header h2 {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.2;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installed-app-dialog-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-soft);
+}
+
+.installed-app-dialog-close:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
 .installed-app-panel {
-  background: var(--subtle-bg);
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 82%, var(--panel-bg));
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 8px;
   display: grid;
   gap: 10px;
   padding: 12px;
+}
+
+.installed-app-dialog-panel .installed-app-panel {
+  background: transparent;
+  border: 0;
+  min-height: 0;
+  padding: 0;
 }
 
 .installed-app-panel > strong {
@@ -60,7 +131,9 @@
 }
 
 .search-clear-button:hover {
-  background: var(--button-bg-hover);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 10%, transparent), transparent),
+    var(--button-bg-hover);
   color: var(--text);
 }
 
@@ -70,8 +143,8 @@
 }
 
 .installed-app-empty {
-  background: var(--surface-muted);
-  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 8px;
   color: var(--text-secondary);
   padding: 10px;
@@ -84,9 +157,14 @@
   overflow: auto;
 }
 
+.installed-app-dialog-panel .installed-app-list {
+  max-height: min(52vh, 430px);
+  max-height: min(52dvh, 430px);
+}
+
 .installed-app-row {
   align-items: center;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -129,6 +207,18 @@
 }
 
 @media (max-width: 520px) {
+  .installed-app-dialog-page {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .installed-app-dialog-panel {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
+    width: 100%;
+  }
+
   .installed-app-row {
     align-items: stretch;
     grid-template-columns: 1fr;

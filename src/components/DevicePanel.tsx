@@ -3,14 +3,12 @@ import {
   Camera,
   Usb,
   Unplug,
-  Wrench,
 } from 'lucide-react'
 import type { AppCopy } from '../lib/appCopy'
 import type { DeviceControlActions, DeviceControlState } from '../lib/deviceControlTypes'
 import { formatCurrentAppLabel } from './deviceDisplay'
 
 export type DevicePanelProps = {
-  onOpenToolbox: () => void
   copy: AppCopy
   state: DeviceControlState
   actions: DeviceControlActions
@@ -20,7 +18,6 @@ export type DevicePanelProps = {
 export function DevicePanel({
   actions,
   copy,
-  onOpenToolbox,
   sectionId,
   state,
 }: DevicePanelProps) {
@@ -87,14 +84,6 @@ export function DevicePanel({
       >
         <Camera size={16} />
         {copy.capture}
-      </button>
-      <button
-        type="button"
-        className="wide"
-        onClick={onOpenToolbox}
-      >
-        <Wrench size={16} />
-        {copy.openToolbox}
       </button>
     </section>
   )

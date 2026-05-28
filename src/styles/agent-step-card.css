@@ -9,8 +9,9 @@
     0 1px 0 color-mix(in srgb, var(--on-primary) 18%, transparent) inset;
   display: grid;
   gap: 4px;
-  justify-self: start;
-  max-width: min(100%, 620px);
+  justify-self: stretch;
+  max-width: 100%;
+  min-width: 0;
   padding: 7px 10px 6px;
   width: 100%;
 }
@@ -339,5 +340,11 @@
 @keyframes agent-step-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 620px) {
+  .agent-step-card {
+    max-width: 100%;
   }
 }

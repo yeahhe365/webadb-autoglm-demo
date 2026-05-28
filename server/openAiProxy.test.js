@@ -121,6 +121,49 @@ describe('createOpenAiProxyHandler', () => {
       error: { message: 'Request body is too large.' },
     })
   })
+
+  it('aborts the upstream model request when the client disconnects', async () => {
+    let upstreamSignal
+    const upstreamStarted = deferred()
+    const upstreamAborted = deferred()
+    const fetcher = async (_url, init) => {
+      upstreamSignal = init.signal
+      upstreamStarted.resolve()
+      return new Promise((_resolve, reject) => {
+        upstreamSignal.addEventListener(
+          'abort',
+          () => {
+            upstreamAborted.resolve()
+            const error = new Error('upstream aborted')
+            error.name = 'AbortError'
+            reject(error)
+          },
+          { once: true },
+        )
+      })
+    }
+    const proxyUrl = await listen(createOpenAiProxyHandler(fetcher))
+    const controller = new AbortController()
+
+    const request = fetch(`${proxyUrl}/api/openai/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'secret',
+        payload: { model: 'agent-model', messages: [{ role: 'user', content: 'hello' }] },
+      }),
+    }).catch((error) => error)
+
+    await upstreamStarted.promise
+    expect(upstreamSignal.aborted).toBe(false)
+
+    controller.abort()
+
+    await upstreamAborted.promise
+    await expect(request).resolves.toEqual(expect.objectContaining({ name: 'AbortError' }))
+  })
 })
 
 function listen(handler) {
@@ -138,4 +181,14 @@ function listen(handler) {
       resolve(`http://127.0.0.1:${address.port}`)
     })
   })
+}
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
 }

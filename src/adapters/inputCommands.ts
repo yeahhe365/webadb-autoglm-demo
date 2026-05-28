@@ -96,6 +96,8 @@ export function buildInputCommandSequence(
       throw new DeviceBackendError('type_secret must be resolved by the action tool registry.')
     case 'custom_tool':
       throw new DeviceBackendError('custom_tool does not execute on the Android device.')
+    case 'view_screenshot':
+      throw new DeviceBackendError('view_screenshot must be handled by the action tool registry.')
     case 'sequence':
       throw new DeviceBackendError('sequence must be expanded by the action tool registry.')
     case 'repeat':

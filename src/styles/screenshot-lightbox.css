@@ -1,6 +1,9 @@
 .screenshot-modal {
   align-items: center;
-  background: rgba(17, 24, 29, 0.72);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
+    rgba(17, 24, 29, 0.78);
+  backdrop-filter: blur(14px) saturate(1.08);
   bottom: 0;
   display: flex;
   justify-content: center;
@@ -13,10 +16,14 @@
 }
 
 .screenshot-modal-panel {
-  background: var(--phone-screen);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 220px),
+    var(--phone-screen);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 30px 88px rgba(0, 0, 0, 0.46),
+    0 1px 0 rgba(255, 255, 255, 0.08) inset;
   display: grid;
   gap: 14px;
   max-height: 92vh;

@@ -27,7 +27,6 @@ function createDevicePanelProps(
       onUnrestrictedModeChange: vi.fn(),
     },
     copy: APP_COPY['zh-CN'],
-    onOpenToolbox: vi.fn(),
     state: {
       busyTask: null,
       connected: false,
@@ -78,13 +77,10 @@ describe('DevicePanel', () => {
     expect(screen.queryByText('当前应用: Unknown')).toBeNull()
   })
 
-  it('opens the toolbox from the compact device panel', () => {
-    const onOpenToolbox = vi.fn()
-    renderDevicePanel({ onOpenToolbox })
+  it('keeps toolbox launch controls out of the compact device panel', () => {
+    renderDevicePanel()
 
-    screen.getByRole('button', { name: '打开工具箱' }).click()
-
-    expect(onOpenToolbox).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: '打开工具箱' })).toBeNull()
   })
 
   it('launches WebUSB selection from the connect button', () => {

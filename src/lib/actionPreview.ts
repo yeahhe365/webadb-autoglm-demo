@@ -47,6 +47,8 @@ export function buildActionPreview(action: AgentAction): string {
       return `call api: ${action.instruction}${suffix}`
     case 'custom_tool':
       return `custom tool ${action.tool}${suffix}`
+    case 'view_screenshot':
+      return `view screenshot ${action.ref ?? `step #${action.step}`}${suffix}`
     case 'sequence': {
       const previews = action.actions.map((child) => buildActionPreview(child)).join('; ')
       return `sequence ${action.actions.length} action(s): ${truncate(previews, 120)}${suffix}`

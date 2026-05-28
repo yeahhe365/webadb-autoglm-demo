@@ -51,10 +51,13 @@
 }
 
 .markdown-content blockquote {
-  border-left: 3px solid var(--border-strong);
+  background: color-mix(in srgb, var(--surface-muted) 46%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
   color: var(--text-secondary);
   margin: 0.8em 0;
-  padding: 0.1em 0 0.1em 0.8em;
+  padding: 0.6em 0.8em;
 }
 
 .markdown-content a {
@@ -68,7 +71,7 @@
 }
 
 .markdown-content code {
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--surface-muted) 84%, transparent);
   border: 1px solid var(--surface-muted-border);
   border-radius: 5px;
   color: var(--text);
@@ -77,8 +80,10 @@
 }
 
 .markdown-content pre {
-  background: var(--phone-screen);
-  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    var(--phone-screen);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 8px;
   color: var(--modal-text);
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -116,7 +121,7 @@
 }
 
 .markdown-content th {
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--surface-muted) 84%, transparent);
   font-weight: 850;
 }
 

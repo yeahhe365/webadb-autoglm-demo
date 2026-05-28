@@ -1,12 +1,13 @@
 .tutorial-panel {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg-elevated) 36%, transparent), transparent),
-    var(--panel-bg);
-  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg-elevated) 62%, transparent), transparent 220px),
+    var(--panel-glass);
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-radius: 8px;
   box-shadow:
-    0 18px 44px color-mix(in srgb, var(--shadow-panel) 72%, transparent),
-    0 1px 0 color-mix(in srgb, var(--on-primary) 22%, transparent) inset;
+    0 20px 50px color-mix(in srgb, var(--shadow-panel) 78%, transparent),
+    0 1px 0 color-mix(in srgb, var(--on-primary) 28%, transparent) inset;
+  backdrop-filter: blur(16px) saturate(1.08);
   display: grid;
   gap: 16px;
   margin: 0 auto 18px;
@@ -39,8 +40,8 @@
 
 .tutorial-steps li {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 34%, transparent), transparent),
-    var(--subtle-bg);
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 82%, var(--panel-bg));
   border: 1px solid color-mix(in srgb, var(--surface-muted-border) 84%, transparent);
   border-radius: 8px;
   display: grid;
@@ -89,7 +90,7 @@
 
 .tutorial-notes {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 28%, transparent), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
     var(--accent-soft);
   border: 1px solid color-mix(in srgb, var(--accent-soft-border) 86%, transparent);
   border-radius: 8px;
@@ -123,8 +124,8 @@
 
 .tutorial-faq article {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 34%, transparent), transparent),
-    var(--subtle-bg);
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 82%, var(--panel-bg));
   border: 1px solid color-mix(in srgb, var(--surface-muted-border) 84%, transparent);
   border-radius: 8px;
   display: grid;

@@ -3,16 +3,8 @@
     padding: 14px 16px 16px;
   }
 
-  .timing-grid {
-    grid-template-columns: 1fr;
-  }
-
   .phone-stage {
     min-height: 560px;
-  }
-
-  .phone-stage-empty {
-    min-height: 360px;
   }
 
   .phone-frame {
@@ -36,8 +28,9 @@
 
 @media (max-width: 760px) {
   .topbar {
-    display: flex;
+    display: grid;
     gap: 6px;
+    grid-template-columns: auto minmax(0, 1fr);
     margin-bottom: 8px;
     min-height: 46px;
     overflow: hidden;
@@ -46,11 +39,12 @@
 
   .topbar-actions {
     display: grid;
-    flex: 1 1 0;
+    flex: 1 1 auto;
     gap: 4px;
     grid-template-columns: minmax(0, 1fr) 38px 38px;
+    margin-left: 0;
     min-width: 0;
-    width: 0;
+    width: auto;
   }
 
   .topbar-brand {
@@ -102,6 +96,7 @@
   .workspace,
   .workspace-config-collapsed {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
 
   .conversation-panel {
@@ -169,6 +164,11 @@
     padding-right: 2px;
   }
 
+  .topbar {
+    max-width: calc(100vw - 20px);
+    width: calc(100vw - 20px);
+  }
+
   .topbar-brand h1 {
     display: none;
   }
@@ -184,6 +184,24 @@
     width: 38px;
   }
 
+  .tutorial-button,
+  .settings-button {
+    position: absolute;
+    top: 4px;
+  }
+
+  .tutorial-button {
+    right: 46px;
+  }
+
+  .settings-button {
+    right: 4px;
+  }
+
+  .topbar-actions {
+    padding-right: 84px;
+  }
+
   .topbar-button-label {
     display: none;
   }
@@ -195,23 +213,11 @@
   }
 
   .current-app-status {
-    max-width: 92px;
+    display: none;
   }
 
   .status-prefix {
     display: none;
-  }
-
-  .phone-stage-empty {
-    min-height: 250px;
-    padding: 8px;
-  }
-
-  .phone-stage-empty .phone-frame {
-    border-width: 6px;
-    border-radius: 22px;
-    max-height: 240px;
-    width: min(58vw, 178px);
   }
 
   .chat-shell {
@@ -236,23 +242,6 @@
     transform: translateY(-4px);
   }
 
-  .chat-empty-prompts {
-    display: grid;
-    gap: 7px;
-    justify-items: stretch;
-    grid-template-columns: 1fr;
-    max-width: min(100%, 252px);
-    width: 100%;
-  }
-
-  .chat-empty-prompts button {
-    min-height: 46px;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    padding: 8px 10px;
-    white-space: normal;
-  }
-
   .conversation-panel-title {
     gap: 8px;
   }
@@ -271,18 +260,18 @@
   }
 
   .chat-composer {
-    padding: 18px 12px calc(env(safe-area-inset-bottom, 0px) + 10px);
+    padding: 0 8px calc(env(safe-area-inset-bottom, 0px) + 12px);
   }
 
   .chat-input-frame {
-    border-radius: 22px;
-    min-height: 70px;
-    padding: 10px 10px 10px 14px;
+    border-radius: 26px;
+    min-height: 72px;
+    padding: 6px 12px;
   }
 
   .chat-input {
     max-height: 108px;
-    min-height: 46px;
+    min-height: 26px;
   }
 }
 
@@ -302,19 +291,4 @@
     font-size: 15px;
   }
 
-  .chat-empty-prompts {
-    gap: 6px;
-  }
-
-  .chat-empty-prompts button {
-    gap: 8px;
-    min-height: 42px;
-    padding: 7px 9px;
-  }
-
-  .chat-empty-prompt-icon {
-    border-radius: 8px;
-    height: 28px;
-    width: 28px;
-  }
 }

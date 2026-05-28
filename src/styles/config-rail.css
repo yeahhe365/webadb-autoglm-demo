@@ -7,8 +7,10 @@
 
 .config-rail-button {
   aspect-ratio: 1;
-  background: transparent;
-  border-color: transparent;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 10%, transparent), transparent),
+    color-mix(in srgb, var(--surface-muted) 58%, transparent);
+  border-color: color-mix(in srgb, var(--border) 62%, transparent);
   border-radius: 8px;
   color: var(--text-secondary);
   min-height: 42px;
@@ -18,7 +20,9 @@
 
 .config-rail-button:hover:not(:disabled),
 .config-rail-button:focus-visible {
-  background: var(--button-bg-hover);
-  border-color: var(--border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
+    var(--button-bg-hover);
+  border-color: var(--border-strong);
   color: var(--accent);
 }

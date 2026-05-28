@@ -5,6 +5,8 @@ import {
   addThreadEvent,
   appendThreadContextSummary,
   type AgentThread,
+  type AgentRecalledScreenshot,
+  type AgentScreenshotReference,
   type AgentTurn,
 } from './agentThread'
 import type { AgentHistoryItem } from './openAiTypes'
@@ -20,6 +22,7 @@ import {
   formatInstalledAppsForPrompt,
   formatPromptHistoryItem,
 } from './promptContextFormatting'
+import { modelScreenshotView } from './screenshot'
 
 const COMPACTED_TURN_EXECUTION_RESULT_MAX_LENGTH = 4000
 const CONTEXT_SUMMARY_MAX_LENGTH = 16000
@@ -29,6 +32,7 @@ const PENDING_USER_MESSAGE_MAX_LENGTH = 1200
 const PROMPT_HISTORY_RESULT_MAX_LENGTH = 1200
 const SHARED_STATE_RESULT_MAX_LENGTH = 360
 const SHARED_STATE_RECENT_TURNS = 5
+const SCREENSHOT_REFERENCE_PROMPT_LIMIT = 12
 const TASK_CONTEXT_MAX_LENGTH = 2000
 const TASK_STATE_MEMORY_ITEM_MAX_LENGTH = 400
 const TASK_STATE_MEMORY_ITEMS = 8
@@ -53,6 +57,7 @@ export type BuildAgentPromptContextInput = {
   pendingUserMessages?: readonly string[]
   screenTree?: DeviceScreenTree
   secrets?: readonly SecretDescriptor[]
+  recalledScreenshot?: AgentRecalledScreenshot
 }
 
 export type BuiltAgentPromptContext = {
@@ -80,6 +85,7 @@ export function buildAgentPromptContext({
   pendingUserMessages,
   screenTree,
   secrets,
+  recalledScreenshot,
 }: BuildAgentPromptContextInput): BuiltAgentPromptContext {
   const history = thread
     ? historyFromRecentTurns(thread, maxRecentTurns)
@@ -108,6 +114,8 @@ export function buildAgentPromptContext({
       thread,
       pendingUserMessages,
     }),
+    formatAvailableScreenshotReferences(thread, Boolean(actionTools?.view_screenshot)),
+    formatRecalledScreenshotForPrompt(recalledScreenshot ?? thread?.activeScreenshotRecall),
     thread?.contextSummary ? `<context_summary>\n${thread.contextSummary}\n</context_summary>` : null,
     thread ? formatRecentActionErrors(thread) : null,
     `Screen Info: ${screenInfo}`,
@@ -139,6 +147,56 @@ export function buildAgentPromptContext({
     history,
     latestUserMessage,
   }
+}
+
+function formatAvailableScreenshotReferences(
+  thread: AgentThread | undefined,
+  recallToolAvailable: boolean,
+) {
+  const references = thread?.screenshotReferences ?? []
+  if (!recallToolAvailable || references.length === 0) {
+    return null
+  }
+
+  return [
+    '<available_screenshots>',
+    'Use view_screenshot with ref or step to inspect one old screenshot; it will be attached to the next model turn.',
+    ...references.slice(-SCREENSHOT_REFERENCE_PROMPT_LIMIT).map(formatScreenshotReferenceLine),
+    '</available_screenshots>',
+  ].join('\n')
+}
+
+function formatScreenshotReferenceLine(reference: AgentScreenshotReference) {
+  const view = modelScreenshotView(reference.screenshot)
+  const app = sanitizeTaskStateLine(reference.currentApp || reference.deviceState.app)
+  const packageName = sanitizeTaskStateLine(reference.deviceState.packageName)
+  const appPart = [app, packageName ? `(${packageName})` : null].filter(Boolean).join(' ')
+  return [
+    `- ${reference.id}: step #${reference.step}`,
+    appPart ? `app=${appPart}` : null,
+    `screen=${view.screen.width}x${view.screen.height}`,
+  ]
+    .filter(Boolean)
+    .join(' | ')
+}
+
+function formatRecalledScreenshotForPrompt(recalledScreenshot?: AgentRecalledScreenshot) {
+  if (!recalledScreenshot) {
+    return null
+  }
+
+  const view = modelScreenshotView(recalledScreenshot.screenshot)
+  return [
+    '<recalled_screenshot>',
+    `Attached recalled image: ${recalledScreenshot.id}`,
+    `Step: #${recalledScreenshot.step}`,
+    `App: ${sanitizeTaskStateLine(
+      recalledScreenshot.currentApp || recalledScreenshot.deviceState.app,
+    ) || 'Unknown'}`,
+    `Screen: ${view.screen.width}x${view.screen.height}`,
+    'Compare the recalled image with the current screenshot when choosing the next action.',
+    '</recalled_screenshot>',
+  ].join('\n')
 }
 
 function formatCustomToolsForPrompt(customTools?: readonly CustomToolDescriptor[]) {

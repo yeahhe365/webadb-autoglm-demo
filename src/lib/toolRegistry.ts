@@ -11,6 +11,7 @@ import {
   type ActionSafetyDecision,
 } from './actionSafetyPolicy'
 import type { AgentAction } from './actionTypes'
+import { recallThreadScreenshot, type AgentThread } from './agentThread'
 import { delayWithAbort, isAbortError, throwIfAborted, withAbort } from './abortSignal'
 
 export type ActionToolParameter = {
@@ -38,6 +39,7 @@ export type ActionToolContext = {
   customTools?: readonly CustomToolDefinition[]
   safetyContext?: ActionSafetyContext
   secrets?: readonly SecretRecord[]
+  screenshotRecallThread?: AgentThread
   signal?: AbortSignal
   unrestrictedMode?: boolean
 }
@@ -175,6 +177,22 @@ export const DEFAULT_ACTION_TOOL_SIGNATURES = {
     parameters: {
       tool: { type: 'string', required: true, description: 'Configured custom tool name.' },
       input: { type: 'object', required: false, description: 'Tool input payload.' },
+    },
+  },
+  view_screenshot: {
+    description:
+      'Recall an earlier stored screenshot by step number or reference id, then attach it to the next model request for visual inspection.',
+    parameters: {
+      ref: {
+        type: 'string',
+        required: false,
+        description: 'Screenshot reference such as step-3, #3, or a visible log step label.',
+      },
+      step: {
+        type: 'number',
+        required: false,
+        description: 'Step number of the stored screenshot to inspect.',
+      },
     },
   },
   sequence: {
@@ -461,6 +479,13 @@ async function executeDefaultAction(action: AgentAction, context: ActionToolCont
       throw new Error(`Custom tool "${action.tool}" is not configured.`)
     }
     return formatCustomToolResult(tool, action.input)
+  }
+
+  if (action.action === 'view_screenshot') {
+    if (!context.screenshotRecallThread) {
+      throw new Error('Screenshot recall is unavailable in this execution context.')
+    }
+    return recallThreadScreenshot(context.screenshotRecallThread, action)
   }
 
   return context.device.execute(action, {

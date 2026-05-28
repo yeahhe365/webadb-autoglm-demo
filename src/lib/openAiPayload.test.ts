@@ -32,6 +32,48 @@ describe('buildChatCompletionPayload', () => {
     ])
   })
 
+  it('attaches recalled screenshots after the current screenshot', () => {
+    const payload = buildChatCompletionPayload({
+      model: 'agent-model',
+      task: 'Compare screens',
+      screenshotDataUrl: 'data:image/png;base64,current',
+      recalledScreenshots: [
+        {
+          label: 'step-3 from step #3',
+          dataUrl: 'data:image/png;base64,old',
+          screen: { width: 540, height: 1200 },
+          step: 3,
+          currentApp: 'Chrome',
+        },
+      ],
+      screen: { width: 1080, height: 2400 },
+    })
+
+    const userMessage = payload.messages[1]
+    if (userMessage.role !== 'user' || !Array.isArray(userMessage.content)) {
+      throw new Error('Expected multimodal user message.')
+    }
+
+    expect(userMessage.content).toEqual([
+      {
+        type: 'text',
+        text: expect.stringContaining('Compare screens'),
+      },
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,current' },
+      },
+      {
+        type: 'text',
+        text: expect.stringContaining('Recalled screenshot attachment: step-3 from step #3.'),
+      },
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,old' },
+      },
+    ])
+  })
+
   it('asks the model for canonical JSON instead of Open-AutoGLM actions', () => {
     const payload = buildChatCompletionPayload({
       model: 'agent-model',
@@ -43,6 +85,7 @@ describe('buildChatCompletionPayload', () => {
     expect(payload.messages[0].content).toContain('Return only one JSON object')
     expect(payload.messages[0].content).toContain('"clear":boolean')
     expect(payload.messages[0].content).toContain('"action":"wait","duration":number')
+    expect(payload.messages[0].content).toContain('"action":"view_screenshot"')
     expect(payload.messages[0].content).toContain('Mobilerun-compatible aliases')
     expect(payload.messages[0].content).not.toContain('"action":"interact"')
     expect(payload.messages[0].content).not.toContain('"action":"call_api"')
@@ -64,6 +107,7 @@ describe('buildChatCompletionPayload', () => {
     expect(payload.messages[0].content).toContain('do(action="Tap"')
     expect(payload.messages[0].content).toContain('type_secret(secret_id=')
     expect(payload.messages[0].content).toContain('custom_tool(tool=')
+    expect(payload.messages[0].content).toContain('view_screenshot(ref=')
     expect(payload.messages[0].content).toContain('0-1000 relative coordinate space')
   })
 
@@ -80,6 +124,7 @@ describe('buildChatCompletionPayload', () => {
     expect(payload.messages[0].content).toContain('<function_calls>')
     expect(payload.messages[0].content).toContain('type_secret(secret_id,clear)')
     expect(payload.messages[0].content).toContain('custom_tool(tool,input)')
+    expect(payload.messages[0].content).toContain('view_screenshot(ref,step)')
   })
 
   it('instructs the model not to request takeover in unrestricted mode', () => {

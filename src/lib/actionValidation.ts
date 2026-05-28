@@ -182,6 +182,30 @@ function validateActionAtDepth(
         candidate,
       )
     }
+    case 'view_screenshot': {
+      const ref =
+        optionalString(candidate, 'ref') ??
+        optionalString(candidate, 'id') ??
+        optionalString(candidate, 'logId') ??
+        optionalString(candidate, 'log_id') ??
+        optionalString(candidate, 'screenshot') ??
+        optionalString(candidate, 'screenshotRef') ??
+        optionalString(candidate, 'screenshot_ref')
+      const step = readOptionalPositiveInteger(candidate, ['step', 'logStep', 'log_step'])
+
+      if (!ref && step === undefined) {
+        throw new ActionValidationError('view_screenshot must include a ref or step.')
+      }
+
+      return withReason(
+        {
+          action,
+          ...(ref ? { ref } : {}),
+          ...(step === undefined ? {} : { step }),
+        },
+        candidate,
+      )
+    }
     case 'sequence': {
       assertCompositeActionDepth(depth)
       const actions = readActionList(candidate, screen, depth)
@@ -427,6 +451,7 @@ function isCompositeChildAction(action: AgentAction): action is ExecutableAtomic
     'repeat',
     'sequence',
     'take_over',
+    'view_screenshot',
   ].includes(action.action)
 }
 
@@ -493,6 +518,26 @@ function readPoint(record: Record<string, unknown>, screen?: ScreenSize): { x: n
   }
 
   return tupleToScreenPoint(point)
+}
+
+function readOptionalPositiveInteger(record: Record<string, unknown>, keys: readonly string[]) {
+  for (const key of keys) {
+    if (!(key in record)) {
+      continue
+    }
+    const value = record[key]
+    if (Number.isInteger(value) && (value as number) > 0) {
+      return value as number
+    }
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+      const parsed = Number(value.trim())
+      if (parsed > 0) {
+        return parsed
+      }
+    }
+    throw new ActionValidationError(`${key} must be a positive integer.`)
+  }
+  return undefined
 }
 
 function readSwipePoints(

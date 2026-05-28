@@ -35,6 +35,7 @@ export type CompletionRequest = ModelConfig & {
   task: string
   conversation?: readonly AgentConversationMessage[]
   screenshotDataUrl: string
+  recalledScreenshots?: readonly PromptScreenshotAttachment[]
   screen: ScreenSize
   deviceScreen?: ScreenSize
   currentApp?: string
@@ -51,6 +52,14 @@ export type CompletionRequest = ModelConfig & {
   secrets?: readonly SecretDescriptor[]
   unrestrictedMode?: boolean
   signal?: AbortSignal
+}
+
+export type PromptScreenshotAttachment = {
+  label: string
+  dataUrl: string
+  screen: ScreenSize
+  step?: number
+  currentApp?: string
 }
 
 export type FinalResponseRequest = ModelConfig & {

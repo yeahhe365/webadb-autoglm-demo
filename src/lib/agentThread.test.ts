@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { DeviceScreenshot } from '../adapters/deviceTypes'
 import type { AgentAction } from './actionTypes'
 import {
-  addThreadEvent,
   createAgentThread,
+  recoverInterruptedThread,
   recordThreadFinalResponse,
+  recordThreadStatus,
   recordThreadTurnExecution,
   recordThreadUserMessage,
   startThreadTurn,
@@ -149,11 +150,7 @@ describe('agent thread model', () => {
   it('allows extra status events without changing the user-visible transcript', () => {
     const thread = createAgentThread('Inspect screen', { id: 'thread-3', now: 1000 })
 
-    addThreadEvent(thread, {
-      type: 'status_change',
-      status: 'running',
-      message: 'Run started',
-    }, { now: 1100 })
+    recordThreadStatus(thread, 'running', 'Run started', { now: 1100 })
 
     expect(thread.status).toBe('running')
     expect(thread.messages.map((message) => message.content)).toEqual(['Inspect screen'])
@@ -162,6 +159,43 @@ describe('agent thread model', () => {
         type: 'status_change',
         status: 'running',
         message: 'Run started',
+      }),
+    )
+  })
+
+  it('recovers a persisted running thread as stopped with planned turns left reviewable', () => {
+    const thread = createAgentThread('Continue interrupted run', { id: 'thread-recover', now: 1000 })
+    recordThreadStatus(thread, 'running', 'Run agent', { now: 1100 })
+    const action: AgentAction = { action: 'tap', x: 100, y: 200 }
+    startThreadTurn(thread, {
+      id: 'turn-planned',
+      index: 1,
+      task: 'Continue interrupted run',
+      latestUserMessage: 'Continue interrupted run',
+      promptContext: 'Task: Continue interrupted run',
+      modelOutput: '{"action":"tap","x":100,"y":200}',
+      action,
+      executionAction: action,
+      preview: 'tap (100, 200)',
+      deviceSnapshot: {
+        currentApp: 'Settings',
+        deviceState: { app: 'Settings', packageName: 'com.android.settings' },
+        screenshot,
+      },
+      timing: { captureMs: 1, currentAppMs: 2, modelMs: 3, parseMs: 4, totalMs: 10 },
+      now: 1200,
+    })
+
+    const recovered = recoverInterruptedThread(thread, 'Browser was refreshed.', { now: 1300 })
+
+    expect(recovered).toBe(true)
+    expect(thread.status).toBe('stopped')
+    expect(thread.turns[0].status).toBe('awaiting_review')
+    expect(thread.events.at(-1)).toEqual(
+      expect.objectContaining({
+        type: 'status_change',
+        status: 'stopped',
+        message: 'Browser was refreshed.',
       }),
     )
   })

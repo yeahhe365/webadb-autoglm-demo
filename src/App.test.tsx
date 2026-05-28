@@ -139,13 +139,14 @@ async function settleAsyncWork() {
   }
 }
 
-async function openToolbox() {
-  fireEvent.click(screen.getByRole('button', { name: /open toolbox/i }))
-  return screen.findByRole('dialog', { name: /toolbox/i })
-}
-
 function connectDeviceFromPanel(buttonName: RegExp = /connect/i) {
   fireEvent.click(screen.getAllByRole('button', { name: buttonName })[0])
+}
+
+async function openInstalledAppsDialog() {
+  const configPanel = document.querySelector('.config-panel') as HTMLElement
+  fireEvent.click(within(configPanel).getByRole('button', { name: /installed apps/i }))
+  return screen.findByRole('dialog', { name: /installed apps/i })
 }
 
 function selectSettingsTab(settingsDialog: HTMLElement, name: RegExp) {
@@ -327,21 +328,6 @@ describe('App', () => {
       expect(document.body.style.overflow).toBe('auto')
       expect(document.body.style.overscrollBehavior).toBe('auto')
     })
-
-    const toolbox = await openToolbox()
-
-    await waitFor(() => {
-      expect(document.body.style.overflow).toBe('hidden')
-      expect(document.body.style.overscrollBehavior).toBe('contain')
-    })
-
-    fireEvent.click(within(toolbox).getByRole('button', { name: /close toolbox/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
-      expect(document.body.style.overflow).toBe('auto')
-      expect(document.body.style.overscrollBehavior).toBe('auto')
-    })
   })
 
   it('clears run log entries from the log section', async () => {
@@ -396,25 +382,18 @@ describe('App', () => {
     expect(screen.getAllByText('No events yet').length).toBeGreaterThan(0)
   })
 
-  it('renders advanced optimization controls', async () => {
+  it('renders advanced optimization controls', () => {
     render(<App />)
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
     fireEvent.click(screen.getByText('Model settings'))
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByText('Device options'))
 
     expect(screen.getByLabelText(/thinking depth/i)).toBeTruthy()
     expect(screen.getByLabelText(/stream model responses/i)).toBeTruthy()
     expect(within(configPanel).getByLabelText(/use adb keyboard for text/i)).toBeTruthy()
     expect(within(configPanel).getByLabelText(/confirm sensitive actions/i)).toBeTruthy()
     expect(within(configPanel).getByLabelText(/unrestricted mode/i)).toBeTruthy()
-    expect(within(toolbox).getByLabelText(/action settle/i)).toBeTruthy()
-    expect(within(toolbox).getByLabelText(/double tap interval/i)).toBeTruthy()
-    expect(within(toolbox).getByLabelText(/keyboard step/i)).toBeTruthy()
-    expect(within(toolbox).queryByLabelText(/use adb keyboard for text/i)).toBeNull()
-    expect(within(toolbox).queryByLabelText(/confirm sensitive actions/i)).toBeNull()
-    expect(within(toolbox).queryByLabelText(/unrestricted mode/i)).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
   it('persists the configured model thinking depth', () => {
@@ -438,21 +417,25 @@ describe('App', () => {
     expect(configPanel).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Model settings')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Device')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Tools')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Enable ADB text input')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Run Doctor')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Installed apps')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Device options')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Use ADB Keyboard for text')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Confirm sensitive actions')).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Unrestricted mode')).toBeTruthy()
-    expect(within(configPanel as HTMLElement).getByText('Preferences')).toBeTruthy()
+    expect(within(configPanel as HTMLElement).queryByText('Preferences')).toBeNull()
     expect(within(configPanel as HTMLElement).getByLabelText(/memory/i)).toBeTruthy()
     expect(
       within(configPanel as HTMLElement).getByLabelText(/dim screen during auto control/i),
     ).toBeTruthy()
-    expect(within(configPanel as HTMLElement).getByRole('button', { name: /open toolbox/i })).toBeTruthy()
     expect(within(configPanel as HTMLElement).queryByText('Direct commands')).toBeNull()
-    expect(within(configPanel as HTMLElement).queryByText('Installed apps')).toBeNull()
+    expect(screen.queryByRole('button', { name: /open toolbox/i })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
-  it('opens the toolbox from the collapsed configuration rail', async () => {
+  it('keeps the collapsed configuration rail focused on model and device only', () => {
     render(<App />)
 
     const configPanel = document.querySelector('.config-panel')
@@ -463,18 +446,16 @@ describe('App', () => {
     expect(configPanel?.classList.contains('config-panel-collapsed')).toBe(true)
     expect(screen.queryByText('Model settings')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /open toolbox/i }))
-
-    const toolbox = await screen.findByRole('dialog', { name: /toolbox/i })
-    expect(configPanel?.classList.contains('config-panel-collapsed')).toBe(true)
-    expect(within(toolbox).getByText('Installed apps')).toBeTruthy()
-    expect(within(toolbox).queryByText('Direct commands')).toBeNull()
-    expect(within(toolbox).getByText('Device options')).toBeTruthy()
+    const rail = screen.getByRole('navigation', { name: /configuration/i })
+    expect(within(rail).getByRole('button', { name: /open model/i })).toBeTruthy()
+    expect(within(rail).getByRole('button', { name: /open device/i })).toBeTruthy()
+    expect(within(rail).queryByRole('button', { name: /open toolbox/i })).toBeNull()
+    expect(within(rail).queryByRole('button', { name: /open tools/i })).toBeNull()
   })
 
   it('gives the chat panel more width when the configuration panel is collapsed', () => {
     expect(layoutCss).toMatch(
-      /\.workspace-config-collapsed\s*\{[\s\S]*grid-template-columns:\s*64px\s+minmax\(300px,\s*320px\)\s+minmax\(360px,\s*1fr\)/,
+      /\.workspace-config-collapsed\s*\{[\s\S]*grid-template-columns:\s*64px\s+minmax\(304px,\s*334px\)\s+minmax\(294px,\s*1fr\)/,
     )
   })
 
@@ -487,19 +468,14 @@ describe('App', () => {
     expect(screen.queryByText(/autoglm native/i)).toBeNull()
   })
 
-  it('labels sensitive action confirmation by its full action scope', async () => {
+  it('labels sensitive action confirmation by its full action scope', () => {
     render(<App />)
 
     const configPanel = document.querySelector('.config-panel') as HTMLElement
     expect(within(configPanel).getByLabelText(/confirm sensitive actions/i)).toBeTruthy()
     expect(within(configPanel).getByLabelText(/unrestricted mode/i)).toBeTruthy()
     expect(within(configPanel).queryByLabelText(/confirm sensitive taps/i)).toBeNull()
-
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByText('Device options'))
-    expect(within(toolbox).queryByLabelText(/confirm sensitive actions/i)).toBeNull()
-    expect(within(toolbox).queryByLabelText(/unrestricted mode/i)).toBeNull()
-    expect(within(toolbox).queryByLabelText(/confirm sensitive taps/i)).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
   it('collapses model settings behind the current model name', () => {
@@ -530,24 +506,18 @@ describe('App', () => {
     expect(apiKeyInput.type).toBe('password')
   })
 
-  it('keeps low-frequency tools out of the homepage until the toolbox opens', async () => {
+  it('keeps device tools directly available in the homepage configuration panel', () => {
     render(<App />)
 
     const configPanel = document.querySelector('.config-panel')
     expect(configPanel).toBeTruthy()
     expect(within(configPanel as HTMLElement).getByText('Device options')).toBeTruthy()
-    for (const summary of ['Installed apps']) {
-      expect(within(configPanel as HTMLElement).queryByText(summary)).toBeNull()
-    }
+    expect(within(configPanel as HTMLElement).getByRole('button', { name: /enable adb text input/i })).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByRole('button', { name: /run doctor/i })).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByRole('button', { name: /installed apps/i })).toBeTruthy()
+    expect(within(configPanel as HTMLElement).getByText('Installed apps').closest('details')).toBeNull()
     expect(within(configPanel as HTMLElement).queryByText('Direct commands')).toBeNull()
-
-    const toolbox = await openToolbox()
-    for (const summary of ['Installed apps', 'Device options']) {
-      const details = within(toolbox).getByText(summary).closest('details')
-      expect(details).toBeTruthy()
-      expect(details?.hasAttribute('open')).toBe(false)
-    }
-    expect(within(toolbox).queryByText('Direct commands')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
     expect(screen.queryByText('Advanced/debug')).toBeNull()
     const logDrawer = document.querySelector('.log-drawer')
     expect(logDrawer).toBeTruthy()
@@ -555,7 +525,7 @@ describe('App', () => {
     expect(document.querySelector('.chat-shell')).toBeTruthy()
   })
 
-  it('places text input and virtual keys below the screenshot preview', async () => {
+  it('places text input and virtual keys below the screenshot preview', () => {
     render(<App />)
 
     const phoneColumn = document.querySelector('.phone-column') as HTMLElement
@@ -569,9 +539,7 @@ describe('App', () => {
     expect(within(quickControls).getByRole('button', { name: /^back$/i })).toBeTruthy()
     expect(within(quickControls).getByRole('button', { name: /^home$/i })).toBeTruthy()
     expect(within(quickControls).getByRole('button', { name: /^enter$/i })).toBeTruthy()
-
-    const toolbox = await openToolbox()
-    expect(within(toolbox).queryByText('Direct commands')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
   it('runs text input from the screenshot preview controls', async () => {
@@ -591,26 +559,26 @@ describe('App', () => {
     )
   })
 
-  it('renders toolbox options as cards', async () => {
+  it('renders homepage device tools as compact action cards', () => {
     render(<App />)
 
-    const toolbox = await openToolbox()
+    const configPanel = document.querySelector('.config-panel') as HTMLElement
 
-    expect(toolbox.querySelector('.toolbox-card-grid')).toBeTruthy()
-    expect(toolbox.querySelector('.toolbox-footer')).toBeTruthy()
-    expect(toolbox.querySelectorAll('.toolbox-status-chip')).toHaveLength(2)
-    expect(within(toolbox).getByText('No device')).toBeTruthy()
-    expect(within(toolbox).getByText('Current app: Unknown')).toBeTruthy()
+    expect(configPanel.querySelector('.home-device-tool-actions')).toBeTruthy()
+    expect(configPanel.querySelectorAll('.home-device-tool-button')).toHaveLength(3)
     for (const label of [
       'Enable ADB text input',
       'Run Doctor',
-      'Installed apps',
-      'Device options',
     ]) {
-      const option = within(toolbox).getByText(label)
-      expect(option.closest('.toolbox-card-title')).toBeTruthy()
-      expect(option.closest('.toolbox-card')).toBeTruthy()
+      const option = within(configPanel).getByText(label)
+      expect(option.closest('.home-device-tool-title')).toBeTruthy()
+      expect(option.closest('.home-device-tool-button')).toBeTruthy()
     }
+    const installedApps = within(configPanel).getByText('Installed apps')
+    expect(installedApps.closest('.home-device-tool-title')).toBeTruthy()
+    expect(installedApps.closest('.home-device-tool-button')).toBeTruthy()
+    expect(installedApps.closest('details')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /toolbox/i })).toBeNull()
   })
 
   it('styles collapsed sections as compact tool rows with custom affordances', () => {
@@ -652,6 +620,11 @@ describe('App', () => {
   it('keeps installed-app search and launch rows usable on narrow screens', () => {
     const narrowInstalledAppsCss = readMediaBlock(installedAppsCss, 'max-width: 520px')
 
+    expect(installedAppsCss).toContain('.installed-app-dialog-page')
+    expect(installedAppsCss).toContain('.installed-app-dialog-panel')
+    expect(installedAppsCss).toMatch(
+      /\.installed-app-dialog-panel\s*\{[\s\S]*width:\s*min\(92vw,\s*620px\)/,
+    )
     expect(installedAppsCss).toMatch(/\.search-field\s*\{[\s\S]*width:\s*100%/)
     expect(installedAppsCss).toMatch(
       /\.search-field > span:last-child\s*\{[\s\S]*width:\s*100%/,
@@ -681,6 +654,29 @@ describe('App', () => {
     )
     expect(narrowSettingsCss).toMatch(
       /\.settings-tool-summary\s*\{[\s\S]*margin-left:\s*0/,
+    )
+  })
+
+  it('matches the AMC settings shell and sidebar treatment', () => {
+    expect(settingsDialogCss).toMatch(
+      /\.settings-panel\s*\{[\s\S]*height:\s*min\(85dvh,\s*800px\)/,
+    )
+    expect(settingsDialogCss).toMatch(
+      /\.settings-panel\s*\{[\s\S]*width:\s*min\(90vw,\s*1120px\)/,
+    )
+    expect(settingsDialogCss).toMatch(
+      /\.settings-sidebar\s*\{[\s\S]*flex:\s*0 0 256px/,
+    )
+    expect(settingsDialogCss).toMatch(
+      /\.settings-tab-button\.is-active\s*\{[\s\S]*background:\s*var\(--surface-muted\)/,
+    )
+    expect(settingsDialogCss).not.toContain('box-shadow: inset 3px 0 0 var(--accent)')
+    expect(settingsDialogCss).not.toContain('box-shadow: inset 0 -2px 0 var(--accent)')
+    expect(settingsDialogCss).not.toContain(
+      'border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);',
+    )
+    expect(settingsDialogCss).not.toContain(
+      'border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);',
     )
   })
 
@@ -765,6 +761,28 @@ describe('App', () => {
     )
   })
 
+  it('shows the screenshot recall tool as a toggleable action tool', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    const settingsDialog = await screen.findByRole('dialog', { name: /settings/i })
+    selectSettingsTab(settingsDialog, /resources/i)
+
+    const toolSearch = within(settingsDialog).getByLabelText(/search action tools/i)
+    fireEvent.change(toolSearch, { target: { value: 'screenshot' } })
+
+    expect(within(settingsDialog).getByText('View screenshot')).toBeTruthy()
+    expect(within(settingsDialog).getByText('view_screenshot')).toBeTruthy()
+
+    const recallTool = within(settingsDialog).getByLabelText(/toggle view screenshot/i)
+    fireEvent.click(recallTool)
+
+    expect(localStorage.setItem).toHaveBeenLastCalledWith(
+      'webdroid-agent-settings',
+      expect.stringContaining('"disabledActionTools":["view_screenshot"]'),
+    )
+  })
+
   it('filters action tools by enabled and disabled state', async () => {
     render(<App />)
 
@@ -787,7 +805,7 @@ describe('App', () => {
 
     expect(within(settingsDialog).queryByText('Tap')).toBeNull()
     expect(within(settingsDialog).getByText('Launch')).toBeTruthy()
-    expect(within(settingsDialog).getByText('19/20 enabled')).toBeTruthy()
+    expect(within(settingsDialog).getByText('20/21 enabled')).toBeTruthy()
   })
 
   it('searches action tool toggles in settings', async () => {
@@ -1172,7 +1190,7 @@ describe('App', () => {
     expect(backendMock.getInstalledApps).not.toHaveBeenCalled()
   })
 
-  it('runs device doctor checks from the toolbox', async () => {
+  it('runs device doctor checks from the homepage tools section', async () => {
     render(<App />)
 
     fireEvent.click(screen.getByText('Model settings'))
@@ -1182,11 +1200,11 @@ describe('App', () => {
     await connectDeviceFromPanel()
     expect(await screen.findByText('Pixel')).toBeTruthy()
 
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByRole('button', { name: /run doctor/i }))
+    const configPanel = document.querySelector('.config-panel') as HTMLElement
+    fireEvent.click(within(configPanel).getByRole('button', { name: /run doctor/i }))
 
-    expect(await within(toolbox).findByText('Doctor checks')).toBeTruthy()
-    const doctorChecks = within(toolbox).getByLabelText('Doctor checks')
+    expect(await within(configPanel).findByText('Doctor checks')).toBeTruthy()
+    const doctorChecks = within(configPanel).getByLabelText('Doctor checks')
     expect(within(doctorChecks).getByText('WebUSB')).toBeTruthy()
     expect(within(doctorChecks).getByText('Screenshot')).toBeTruthy()
     expect(within(doctorChecks).getByText('Screen size')).toBeTruthy()
@@ -1203,7 +1221,7 @@ describe('App', () => {
     )
   })
 
-  it('downloads, installs, and enables ADB Keyboard from the toolbox', async () => {
+  it('downloads, installs, and enables ADB Keyboard from the homepage tools section', async () => {
     const apkBytes = new Uint8Array([80, 75, 3, 4])
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(apkBytes))
     backendMock.getInputMethods.mockResolvedValueOnce('')
@@ -1213,8 +1231,8 @@ describe('App', () => {
     await connectDeviceFromPanel()
     expect(await screen.findByText('Pixel')).toBeTruthy()
 
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByRole('button', { name: /enable adb text input/i }))
+    const configPanel = document.querySelector('.config-panel') as HTMLElement
+    fireEvent.click(within(configPanel).getByRole('button', { name: /enable adb text input/i }))
 
     await waitFor(() => expect(backendMock.installAdbKeyboard).toHaveBeenCalledTimes(1))
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -1331,16 +1349,15 @@ describe('App', () => {
     await connectDeviceFromPanel()
     expect(await screen.findByText('Pixel')).toBeTruthy()
 
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByText('Installed apps'))
-    const appSearch = await within(toolbox).findByLabelText(/app search/i)
+    const installedAppsDialog = await openInstalledAppsDialog()
+    const appSearch = await within(installedAppsDialog).findByLabelText(/app search/i)
     fireEvent.change(appSearch, { target: { value: 'gm' } })
 
-    expect(within(toolbox).getByText('Gmail')).toBeTruthy()
-    expect(within(toolbox).getByText('com.google.android.gm')).toBeTruthy()
-    expect(within(toolbox).queryByText('Chrome')).toBeNull()
+    expect(within(installedAppsDialog).getByText('Gmail')).toBeTruthy()
+    expect(within(installedAppsDialog).getByText('com.google.android.gm')).toBeTruthy()
+    expect(within(installedAppsDialog).queryByText('Chrome')).toBeNull()
 
-    fireEvent.click(within(toolbox).getByRole('button', { name: /launch gmail/i }))
+    fireEvent.click(within(installedAppsDialog).getByRole('button', { name: /launch gmail/i }))
 
     await waitFor(() =>
       expect(backendMock.execute).toHaveBeenCalledWith({
@@ -1357,21 +1374,20 @@ describe('App', () => {
     await connectDeviceFromPanel()
     expect(await screen.findByText('Pixel')).toBeTruthy()
 
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByText('Installed apps'))
-    const appSearch = await within(toolbox).findByLabelText(/app search/i)
+    const installedAppsDialog = await openInstalledAppsDialog()
+    const appSearch = await within(installedAppsDialog).findByLabelText(/app search/i)
     fireEvent.change(appSearch, { target: { value: 'maps' } })
 
-    expect(within(toolbox).getByText('No apps match "maps"')).toBeTruthy()
-    expect(within(toolbox).queryByText('Gmail')).toBeNull()
-    expect(within(toolbox).queryByText('Chrome')).toBeNull()
+    expect(within(installedAppsDialog).getByText('No apps match "maps"')).toBeTruthy()
+    expect(within(installedAppsDialog).queryByText('Gmail')).toBeNull()
+    expect(within(installedAppsDialog).queryByText('Chrome')).toBeNull()
 
-    fireEvent.click(within(toolbox).getByRole('button', { name: /clear app search/i }))
+    fireEvent.click(within(installedAppsDialog).getByRole('button', { name: /clear app search/i }))
 
     expect((appSearch as HTMLInputElement).value).toBe('')
-    expect(within(toolbox).getByText('Gmail')).toBeTruthy()
-    expect(within(toolbox).getByText('Chrome')).toBeTruthy()
-    expect(within(toolbox).queryByRole('button', { name: /clear app search/i })).toBeNull()
+    expect(within(installedAppsDialog).getByText('Gmail')).toBeTruthy()
+    expect(within(installedAppsDialog).getByText('Chrome')).toBeTruthy()
+    expect(within(installedAppsDialog).queryByRole('button', { name: /clear app search/i })).toBeNull()
   })
 
   it('searches installed apps by known display names when Android labels are missing', async () => {
@@ -1395,17 +1411,16 @@ describe('App', () => {
     await connectDeviceFromPanel()
     expect(await screen.findByText('Pixel')).toBeTruthy()
 
-    const toolbox = await openToolbox()
-    fireEvent.click(within(toolbox).getByText('Installed apps'))
-    const appSearch = await within(toolbox).findByLabelText(/app search/i)
+    const installedAppsDialog = await openInstalledAppsDialog()
+    const appSearch = await within(installedAppsDialog).findByLabelText(/app search/i)
     fireEvent.change(appSearch, { target: { value: '短信' } })
 
-    expect(within(toolbox).getByText('短信')).toBeTruthy()
-    expect(within(toolbox).getByText('com.android.mms')).toBeTruthy()
-    expect(within(toolbox).queryByText(/null icon=/)).toBeNull()
-    expect(within(toolbox).queryByText('Chrome')).toBeNull()
+    expect(within(installedAppsDialog).getByText('短信')).toBeTruthy()
+    expect(within(installedAppsDialog).getByText('com.android.mms')).toBeTruthy()
+    expect(within(installedAppsDialog).queryByText(/null icon=/)).toBeNull()
+    expect(within(installedAppsDialog).queryByText('Chrome')).toBeNull()
 
-    fireEvent.click(within(toolbox).getByRole('button', { name: /launch 短信/i }))
+    fireEvent.click(within(installedAppsDialog).getByRole('button', { name: /launch 短信/i }))
 
     await waitFor(() =>
       expect(backendMock.execute).toHaveBeenCalledWith({
@@ -1440,10 +1455,6 @@ describe('App', () => {
     const narrowBreakpoint = readMediaBlock(responsiveCss, 'max-width: 360px')
 
     expect(chatPanelCss).toMatch(/\.chat-empty-icon\s*\{[\s\S]*border-radius:\s*8px/)
-    expect(chatPanelCss).toMatch(
-      /\.chat-empty-prompts button\s*\{[\s\S]*border-radius:\s*8px/,
-    )
-    expect(chatPanelCss).toMatch(/\.chat-empty-prompt-icon\s*\{[\s\S]*border-radius:\s*8px/)
     expect(mobileBreakpoint).toMatch(
       /\.chat-shell:has\(\.chat-empty-state\)\s*\{[\s\S]*min-height:\s*clamp\(390px,\s*54dvh,\s*500px\)/,
     )
@@ -1453,7 +1464,6 @@ describe('App', () => {
     expect(narrowBreakpoint).toMatch(/\.chat-empty-state\s*\{[\s\S]*transform:\s*none/)
     expect(narrowBreakpoint).toMatch(/\.chat-empty-icon\s*\{[\s\S]*border-radius:\s*8px/)
     expect(narrowBreakpoint).toMatch(/\.chat-empty-icon\s*\{[\s\S]*height:\s*42px/)
-    expect(narrowBreakpoint).toMatch(/\.chat-empty-prompts button\s*\{[\s\S]*min-height:\s*42px/)
   })
 
   it('lets the configuration panel use normal page scrolling in single-column layouts', () => {
@@ -1470,13 +1480,21 @@ describe('App', () => {
     )
   })
 
-  it('uses a stable four-tab settings nav on narrow screens', () => {
-    expect(settingsDialogCss).toContain('@media (max-width: 560px)')
-    expect(settingsDialogCss).toMatch(/\.settings-nav\s*\{[\s\S]*display:\s*grid/)
-    expect(settingsDialogCss).toMatch(
-      /\.settings-nav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+  it('uses an AMC-style horizontal settings nav on narrow screens', () => {
+    const mobileSettingsCss = readMediaBlock(settingsDialogCss, 'max-width: 760px')
+    const narrowSettingsCss = readMediaBlock(settingsDialogCss, 'max-width: 560px')
+
+    expect(mobileSettingsCss).toMatch(
+      /\.settings-panel\s*\{[\s\S]*flex-direction:\s*column/,
     )
-    expect(settingsDialogCss).toMatch(/\.settings-nav-group\s*\{[\s\S]*display:\s*contents/)
+    expect(mobileSettingsCss).toMatch(
+      /\.settings-nav\s*\{[\s\S]*flex-direction:\s*row/,
+    )
+    expect(mobileSettingsCss).toMatch(/\.settings-nav\s*\{[\s\S]*overflow-x:\s*auto/)
+    expect(mobileSettingsCss).toMatch(/\.settings-tab-button\s*\{[\s\S]*width:\s*auto/)
+    expect(narrowSettingsCss).not.toMatch(/\.settings-nav\s*\{[\s\S]*display:\s*grid/)
+    expect(narrowSettingsCss).not.toContain('grid-template-columns: repeat(4')
+    expect(narrowSettingsCss).not.toMatch(/\.settings-nav-group\s*\{[\s\S]*display:\s*contents/)
   })
 
   it('keeps project repository stats compact on narrow settings screens', () => {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentThread, recordThreadTurnExecution, startThreadTurn } from './agentThread'
+import {
+  createAgentThread,
+  recallThreadScreenshot,
+  recordThreadScreenshot,
+  recordThreadTurnExecution,
+  startThreadTurn,
+} from './agentThread'
 import type { AgentAction } from './actionTypes'
 import {
   buildAgentPromptContext,
@@ -268,6 +274,76 @@ describe('context builder', () => {
     expect(context.text).toContain('Choose only one listed action tool')
     expect(context.text).toContain('tap(x:number required, y:number required, message:string optional)')
     expect(context.text).toContain('back(): Press Android Back.')
+  })
+
+  it('lists old screenshot references only when the recall tool is available', () => {
+    const thread = createAgentThread('Compare screens')
+    recordThreadScreenshot(thread, {
+      step: 2,
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
+      screenshot: {
+        dataUrl: 'data:image/png;base64,old',
+        modelScreen: { width: 540, height: 1200 },
+        screen: { width: 1080, height: 2400 },
+      },
+      now: 1000,
+    })
+
+    const withTool = buildAgentPromptContext({
+      thread,
+      task: 'Compare screens',
+      actionTools: {
+        view_screenshot: {
+          description: 'Recall an earlier screenshot.',
+          parameters: {
+            step: { type: 'number', required: false },
+          },
+        },
+      },
+      screen: { width: 1080, height: 2400 },
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome' },
+    })
+    const withoutTool = buildAgentPromptContext({
+      thread,
+      task: 'Compare screens',
+      screen: { width: 1080, height: 2400 },
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome' },
+    })
+
+    expect(withTool.text).toContain('<available_screenshots>')
+    expect(withTool.text).toContain('step-2: step #2')
+    expect(withoutTool.text).not.toContain('<available_screenshots>')
+  })
+
+  it('describes an active recalled screenshot in prompt context', () => {
+    const thread = createAgentThread('Compare screens')
+    recordThreadScreenshot(thread, {
+      step: 3,
+      currentApp: 'Settings',
+      deviceState: { app: 'Settings' },
+      screenshot: {
+        dataUrl: 'data:image/png;base64,old',
+        modelScreen: { width: 500, height: 1000 },
+        screen: { width: 1000, height: 2000 },
+      },
+      now: 1000,
+    })
+    recallThreadScreenshot(thread, { action: 'view_screenshot', ref: 'step-3' }, { now: 1100 })
+
+    const context = buildAgentPromptContext({
+      thread,
+      task: 'Compare screens',
+      screen: { width: 1080, height: 2400 },
+      currentApp: 'Settings',
+      deviceState: { app: 'Settings' },
+    })
+
+    expect(context.text).toContain('<recalled_screenshot>')
+    expect(context.text).toContain('Attached recalled image: step-3')
+    expect(context.text).toContain('Screen: 500x1000')
   })
 
   it('truncates prompt-supplied context fields before sending them to the model', () => {

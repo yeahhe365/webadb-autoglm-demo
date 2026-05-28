@@ -826,6 +826,69 @@ describe('createAgentRunner', () => {
     expect(result.steps[0].toolName).toBe('tap')
   })
 
+  it('lets the model recall a prior step screenshot and inspect it on the next turn', async () => {
+    const device = fakeDevice()
+    const screenshots = [
+      'data:image/png;base64,screen-1',
+      'data:image/png;base64,screen-2',
+      'data:image/png;base64,screen-3',
+    ]
+    let screenshotCall = 0
+    vi.mocked(device.screenshot).mockImplementation(async () => ({
+      bytes: new Uint8Array(),
+      dataUrl: screenshots[Math.min(screenshotCall++, screenshots.length - 1)],
+      screen: { width: 1080, height: 2400 },
+    }))
+    const session = createAgentSession('Compare old screen')
+    let modelCall = 0
+    const recalledRequests: unknown[] = []
+    const client: OpenAiClient = {
+      completeAction: vi.fn(async (request) => {
+        modelCall += 1
+        if (modelCall === 1) {
+          return '{"action":"wait","ms":100}'
+        }
+        if (modelCall === 2) {
+          expect(request.promptContext).toContain('<available_screenshots>')
+          expect(request.promptContext).toContain('step-1: step #1')
+          return '{"action":"view_screenshot","step":1}'
+        }
+
+        recalledRequests.push(request.recalledScreenshots)
+        expect(request.promptContext).toContain('<recalled_screenshot>')
+        expect(request.promptContext).toContain('Attached recalled image: step-1')
+        return '{"action":"done","summary":"compared"}'
+      }),
+    }
+    const runner = createAgentRunner({ device, client })
+
+    const result = await runner.run({
+      modelConfig: { baseUrl: 'https://api.example.com/v1', apiKey: 'key', model: 'm' },
+      task: 'Compare old screen',
+      autoExecute: true,
+      maxSteps: 3,
+      session,
+    })
+
+    expect(result.status).toBe('done')
+    expect(session.turns[1].toolName).toBe('view_screenshot')
+    expect(session.activeScreenshotRecall).toBeUndefined()
+    expect(session.screenshotReferences.map((reference) => reference.id)).toEqual([
+      'step-1',
+      'step-2',
+      'step-3',
+    ])
+    expect(recalledRequests).toEqual([
+      [
+        expect.objectContaining({
+          dataUrl: 'data:image/png;base64,screen-1',
+          label: 'step-1 from step #1',
+          step: 1,
+        }),
+      ],
+    ])
+  })
+
   it('waits for the executed-action callback before starting the next step', async () => {
     const events: string[] = []
     const device = fakeDevice()

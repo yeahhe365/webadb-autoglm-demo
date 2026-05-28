@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createAgentSession, type AgentSession } from '../lib/agent'
+import { recoverInterruptedThread, type AgentThreadStatus } from '../lib/agentThread'
 import type { AppCopy } from '../lib/appCopy'
 import { buildInteractionStream } from '../lib/interactionStream'
 import type { AgentConversationMessage } from '../lib/openAiTypes'
@@ -26,6 +27,16 @@ type DeleteHistoryThreadResult = {
   resetActiveThread: boolean
 }
 
+export type AgentSessionSummary = {
+  status: AgentThreadStatus
+  stepNumber: number
+  turnCount: number
+  pendingUserMessageCount: number
+  contextCompactedThroughStep: number
+  latestStatusMessage?: string
+  updatedAt: number
+}
+
 export function useAgentSessionHistory({
   addLog,
   copy,
@@ -41,6 +52,7 @@ export function useAgentSessionHistory({
   const [interactionItems, setInteractionItems] = useState(() =>
     buildInteractionStream(initialSession),
   )
+  const [sessionSummary, setSessionSummary] = useState(() => summarizeSession(initialSession))
   const threadStore = useMemo(() => createIndexedDbThreadStore(), [])
   const [threadStoreReady, setThreadStoreReady] = useState(false)
   const [threadSummaries, setThreadSummaries] = useState<AgentThreadSummary[]>([])
@@ -56,6 +68,7 @@ export function useAgentSessionHistory({
       setActiveThreadId(session.id)
       setConversation([...session.messages])
       setInteractionItems(buildInteractionStream(session))
+      setSessionSummary(summarizeSession(session))
       onSessionStateChange(session)
     },
     [onSessionStateChange],
@@ -105,6 +118,7 @@ export function useAgentSessionHistory({
       threadStoreReady,
     ],
   )
+  const persistSessionRef = useLatestValue(persistSession)
 
   const syncConversation = useCallback(() => {
     applySessionState(sessionRef.current)
@@ -125,6 +139,10 @@ export function useAgentSessionHistory({
           return false
         }
 
+        const recovered = recoverInterruptedThread(
+          selectedThread,
+          copyRef.current.previousRunInterrupted,
+        )
         sessionRef.current = selectedThread
         applySessionState(selectedThread)
         addLog({
@@ -135,6 +153,9 @@ export function useAgentSessionHistory({
             selectedThread.lastScreenshot ?? selectedThread.deviceSnapshot?.screenshot,
           ),
         })
+        if (recovered) {
+          persistSessionRef.current(selectedThread)
+        }
         return true
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : String(caught)
@@ -142,7 +163,7 @@ export function useAgentSessionHistory({
         return false
       }
     },
-    [addLog, applySessionState, copyRef, refreshThreadSummaries, threadStore],
+    [addLog, applySessionState, copyRef, persistSessionRef, refreshThreadSummaries, threadStore],
   )
 
   const deleteHistoryThread = useCallback(
@@ -189,6 +210,10 @@ export function useAgentSessionHistory({
       try {
         const restoredThread = await threadStore.loadLatest()
         if (!cancelled && restoredThread) {
+          const recovered = recoverInterruptedThread(
+            restoredThread,
+            copyRef.current.previousRunInterrupted,
+          )
           sessionRef.current = restoredThread
           applySessionState(restoredThread)
           addLog({
@@ -199,6 +224,9 @@ export function useAgentSessionHistory({
               restoredThread.lastScreenshot ?? restoredThread.deviceSnapshot?.screenshot,
             ),
           })
+          if (recovered) {
+            persistSessionRef.current(restoredThread)
+          }
         }
       } catch (caught) {
         if (cancelled) {
@@ -228,7 +256,7 @@ export function useAgentSessionHistory({
     return () => {
       cancelled = true
     }
-  }, [addLog, applySessionState, applyThreadSummaries, copyRef, threadStore])
+  }, [addLog, applySessionState, applyThreadSummaries, copyRef, persistSessionRef, threadStore])
 
   useEffect(() => {
     if (!threadStoreReady) {
@@ -245,9 +273,28 @@ export function useAgentSessionHistory({
     ensureSession: () => sessionRef.current,
     interactionItems,
     selectHistoryThread,
+    sessionSummary,
     startNewSession,
     syncConversation,
     threadSummaries,
+  }
+}
+
+function summarizeSession(session: AgentSession): AgentSessionSummary {
+  const latestStatusEvent = [...session.events]
+    .reverse()
+    .find((event) => event.type === 'status_change')
+
+  return {
+    status: session.status,
+    stepNumber: session.stepNumber,
+    turnCount: session.turns.length,
+    pendingUserMessageCount: session.pendingUserMessages.length,
+    contextCompactedThroughStep: session.contextCompactedThroughStep,
+    ...(latestStatusEvent?.type === 'status_change' && latestStatusEvent.message
+      ? { latestStatusMessage: latestStatusEvent.message }
+      : {}),
+    updatedAt: session.updatedAt,
   }
 }
 

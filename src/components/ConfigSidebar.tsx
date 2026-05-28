@@ -1,9 +1,8 @@
 import {
-  BrainCircuit,
+  Bot,
   PanelLeftClose,
   PanelLeftOpen,
   Usb,
-  Wrench,
 } from 'lucide-react'
 import type { AppCopy } from '../lib/appCopy'
 import type { ActionProtocol } from '../lib/actionProtocol'
@@ -12,15 +11,13 @@ import { ConfigRail, type ConfigRailItem } from './ConfigRail'
 import { CONFIG_TARGET_IDS, type ConfigTarget } from './configTargets'
 import { DeviceHomeOptionsSection } from './DeviceHomeOptionsSection'
 import { DevicePanel } from './DevicePanel'
-import { HomePreferencesSection } from './HomePreferencesSection'
+import { DeviceToolsSection } from './DeviceToolsSection'
 import type {
   DeviceControlActions,
   DeviceControlOptions,
   DeviceControlState,
 } from '../lib/deviceControlTypes'
 import { ModelPanel } from './ModelPanel'
-
-type ConfigRailTarget = ConfigTarget | 'toolbox'
 
 export type ConfigSidebarProps = {
   copy: AppCopy
@@ -37,7 +34,6 @@ export type ConfigSidebarProps = {
     value: ModelConfig[Key],
   ) => void
   onMemoryEnabledChange: (value: boolean) => void
-  onOpenToolbox: () => void
   onScreenBlackoutDuringAutoControlChange: (value: boolean) => void
   onSelectTarget: (target: ConfigTarget) => void
   onStreamResponsesChange: (value: boolean) => void
@@ -58,7 +54,6 @@ export function ConfigSidebar({
   onActionProtocolChange,
   onModelConfigChange,
   onMemoryEnabledChange,
-  onOpenToolbox,
   onScreenBlackoutDuringAutoControlChange,
   onSelectTarget,
   onStreamResponsesChange,
@@ -66,20 +61,10 @@ export function ConfigSidebar({
   screenBlackoutDuringAutoControl,
   streamResponses,
 }: ConfigSidebarProps) {
-  const railItems: ConfigRailItem<ConfigRailTarget>[] = [
-    { icon: BrainCircuit, label: copy.model, target: 'model' },
+  const railItems: ConfigRailItem<ConfigTarget>[] = [
+    { icon: Bot, label: copy.model, target: 'model' },
     { icon: Usb, label: copy.device, target: 'device' },
-    { icon: Wrench, label: copy.toolbox, target: 'toolbox' },
   ]
-
-  const handleRailSelect = (target: ConfigRailTarget) => {
-    if (target === 'toolbox') {
-      onOpenToolbox()
-      return
-    }
-
-    onSelectTarget(target)
-  }
 
   return (
     <aside
@@ -125,30 +110,27 @@ export function ConfigSidebar({
           <DevicePanel
             actions={deviceActions}
             copy={copy}
-            onOpenToolbox={onOpenToolbox}
             sectionId={CONFIG_TARGET_IDS.device}
             state={deviceState}
           />
 
+          <DeviceToolsSection actions={deviceActions} copy={copy} state={deviceState} />
+
           <DeviceHomeOptionsSection
             actions={deviceActions}
             copy={copy}
-            options={deviceOptions}
-          />
-
-          <HomePreferencesSection
-            copy={copy}
             memoryEnabled={memoryEnabled}
-            screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
             onMemoryEnabledChange={onMemoryEnabledChange}
             onScreenBlackoutDuringAutoControlChange={onScreenBlackoutDuringAutoControlChange}
+            options={deviceOptions}
+            screenBlackoutDuringAutoControl={screenBlackoutDuringAutoControl}
           />
         </div>
       ) : (
         <ConfigRail
           copy={copy}
           items={railItems}
-          onSelect={handleRailSelect}
+          onSelect={onSelectTarget}
         />
       )}
     </aside>

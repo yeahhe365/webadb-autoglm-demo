@@ -23,20 +23,24 @@ import type {
   CompletionRequest,
   ModelConfig,
   OpenAiClient,
+  PromptScreenshotAttachment,
 } from './openAiTypes'
 import { OpenAiClientError } from './openAiErrors'
 import { compactScreenshotForMemory, mapActionCoordinates, modelScreenshotView } from './screenshot'
 import { buildAgentPromptContext, compactThreadContext } from './contextBuilder'
 import { truncateRetainedText } from './textRetention'
 import {
+  clearThreadActiveScreenshotRecall,
   createAgentThread,
   createConversationMessage,
   rememberThreadInformation,
+  recordThreadScreenshot,
   recordThreadFinalResponse,
   recordThreadTurnExecution,
   recordThreadUserMessage,
   startThreadTurn,
   updateThreadDeviceSnapshot,
+  type AgentRecalledScreenshot,
   type AgentThread,
   type QueuedUserMessage,
 } from './agentThread'
@@ -356,6 +360,7 @@ export async function runAgentStep({
     })
   }
   const pendingUserMessages = session ? [...session.pendingUserMessages] : []
+  const recalledScreenshot = session?.activeScreenshotRecall
   const appCard = resolveAppCard(appCards, deviceState.packageName)
   const promptCustomTools = customToolDescriptors(customTools ?? [])
   const promptSecrets = secretDescriptors(secrets ?? [])
@@ -376,6 +381,7 @@ export async function runAgentStep({
     memoryItems,
     actionTools,
     secrets: promptSecrets,
+    recalledScreenshot,
   })
   const promptContext = builtContext.text
   const completionRequest: CompletionRequest = {
@@ -383,6 +389,9 @@ export async function runAgentStep({
     actionProtocol,
     task,
     conversation: session?.messages,
+    recalledScreenshots: recalledScreenshot
+      ? [toPromptScreenshotAttachment(recalledScreenshot)]
+      : undefined,
     screenshotDataUrl: modelScreenshot.dataUrl,
     screen: modelScreenshot.screen,
     deviceScreen: screenshot.screen,
@@ -452,6 +461,16 @@ export async function runAgentStep({
       })
     : undefined
   if (session) {
+    if (recalledScreenshot) {
+      clearThreadActiveScreenshotRecall(session)
+    }
+    recordThreadScreenshot(session, {
+      step: index,
+      title: `Step #${index}`,
+      currentApp,
+      deviceState,
+      screenshot: retainedScreenshot,
+    })
     markPendingUserMessagesConsumed(session, pendingUserMessages)
   }
 
@@ -647,6 +666,7 @@ export function createAgentRunner({
             },
             customTools: input.customTools,
             secrets: input.secrets,
+            screenshotRecallThread: session,
             signal: input.signal,
           })
         } catch (caught) {
@@ -716,6 +736,19 @@ function stripScreenshotImageData(screenshot: DeviceScreenshot): DeviceScreensho
     ...(screenshot.modelGridDivisions !== undefined
       ? { modelGridDivisions: screenshot.modelGridDivisions }
       : {}),
+  }
+}
+
+function toPromptScreenshotAttachment(
+  recalledScreenshot: AgentRecalledScreenshot,
+): PromptScreenshotAttachment {
+  const view = modelScreenshotView(recalledScreenshot.screenshot)
+  return {
+    label: `${recalledScreenshot.id} from step #${recalledScreenshot.step}`,
+    dataUrl: view.dataUrl,
+    screen: view.screen,
+    step: recalledScreenshot.step,
+    currentApp: recalledScreenshot.currentApp || recalledScreenshot.deviceState.app,
   }
 }
 

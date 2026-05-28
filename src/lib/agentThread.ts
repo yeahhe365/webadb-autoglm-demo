@@ -9,6 +9,7 @@ import { truncateRetainedTailText, truncateRetainedText } from './textRetention'
 const DEFAULT_THREAD_TITLE = 'New chat'
 const MAX_THREAD_MEMORY_ITEMS = 24
 const THREAD_MEMORY_ITEM_MAX_LENGTH = 1200
+export const MAX_THREAD_SCREENSHOT_REFERENCES = 32
 
 export type AgentThreadStatus =
   | 'idle'
@@ -46,6 +47,20 @@ export type AgentDeviceSnapshot = {
   currentApp: string
   deviceState: DeviceState
   screenshot?: DeviceScreenshot
+}
+
+export type AgentScreenshotReference = {
+  id: string
+  step: number
+  title: string
+  currentApp: string
+  deviceState: DeviceState
+  screenshot: DeviceScreenshot
+  createdAt: number
+}
+
+export type AgentRecalledScreenshot = AgentScreenshotReference & {
+  recalledAt: number
 }
 
 export type AgentTurnTiming = {
@@ -155,6 +170,8 @@ export type AgentThread = {
   actionOutcomes: boolean[]
   errorDescriptions: string[]
   memory: string[]
+  screenshotReferences: AgentScreenshotReference[]
+  activeScreenshotRecall?: AgentRecalledScreenshot
   contextSummary: string
   contextCompactedThroughStep: number
   progressSummary: string
@@ -200,6 +217,7 @@ export function createAgentThread(
     actionOutcomes: [],
     errorDescriptions: [],
     memory: [],
+    screenshotReferences: [],
     contextSummary: '',
     contextCompactedThroughStep: 0,
     progressSummary: '',
@@ -498,6 +516,53 @@ export function recordThreadFinalResponse(
   return recordThreadAssistantMessage(thread, content, options)
 }
 
+export function recordThreadStatus(
+  thread: AgentThread,
+  status: AgentThreadStatus,
+  message?: string,
+  options: { now?: number } = {},
+) {
+  const latestStatusEvent = [...thread.events]
+    .reverse()
+    .find((event) => event.type === 'status_change')
+  if (
+    thread.status === status &&
+    latestStatusEvent?.type === 'status_change' &&
+    latestStatusEvent.message === message
+  ) {
+    touchThread(thread, options.now)
+    return latestStatusEvent
+  }
+
+  return addThreadEvent(
+    thread,
+    {
+      type: 'status_change',
+      status,
+      ...(message ? { message } : {}),
+    },
+    options,
+  )
+}
+
+export function recoverInterruptedThread(
+  thread: AgentThread,
+  message = 'Previous run was interrupted before it finished.',
+  options: { now?: number } = {},
+) {
+  if (thread.status !== 'running') {
+    return false
+  }
+
+  for (const turn of thread.turns) {
+    if (turn.status === 'planned') {
+      turn.status = 'awaiting_review'
+    }
+  }
+  recordThreadStatus(thread, 'stopped', message, options)
+  return true
+}
+
 export function addThreadEvent(
   thread: AgentThread,
   event: AgentThreadEventInput,
@@ -515,6 +580,87 @@ export function addThreadEvent(
   }
   touchThread(thread, now)
   return entry
+}
+
+export function recordThreadScreenshot(
+  thread: AgentThread,
+  input: {
+    step: number
+    currentApp: string
+    deviceState: DeviceState
+    screenshot: DeviceScreenshot
+    title?: string
+    now?: number
+  },
+) {
+  const now = input.now ?? Date.now()
+  const step = Math.max(1, Math.round(input.step))
+  const id = screenshotReferenceIdForStep(step)
+  const entry: AgentScreenshotReference = {
+    id,
+    step,
+    title: input.title ?? `Step #${step}`,
+    currentApp: input.currentApp,
+    deviceState: cloneValue(input.deviceState),
+    screenshot: compactScreenshotForMemory(input.screenshot),
+    createdAt: now,
+  }
+  const references = thread.screenshotReferences ?? []
+  thread.screenshotReferences = [
+    ...references.filter((reference) => reference.id !== id && reference.step !== step),
+    entry,
+  ].slice(-MAX_THREAD_SCREENSHOT_REFERENCES)
+  touchThread(thread, now)
+  return entry
+}
+
+export function recallThreadScreenshot(
+  thread: AgentThread,
+  action: Extract<AgentAction, { action: 'view_screenshot' }>,
+  options: { now?: number } = {},
+) {
+  const references = thread.screenshotReferences ?? []
+  const reference = resolveScreenshotReference(references, action)
+  if (!reference) {
+    const available = references.map((item) => item.id).slice(-8).join(', ')
+    throw new Error(
+      available
+        ? `Screenshot ${formatRequestedScreenshotReference(action)} was not found. Available: ${available}.`
+        : 'No recalled screenshots are available yet.',
+    )
+  }
+
+  const now = options.now ?? Date.now()
+  const recalled: AgentRecalledScreenshot = {
+    ...reference,
+    deviceState: cloneValue(reference.deviceState),
+    screenshot: compactScreenshotForMemory(reference.screenshot),
+    recalledAt: now,
+  }
+  thread.activeScreenshotRecall = recalled
+  touchThread(thread, now)
+
+  const screen = recalled.screenshot.modelScreen ?? recalled.screenshot.screen
+  return [
+    `Recalled screenshot ${recalled.id} from step #${recalled.step}.`,
+    `App: ${recalled.currentApp || recalled.deviceState.app || UNKNOWN_APP_NAME}.`,
+    `Image size: ${screen.width}x${screen.height}.`,
+    'It will be attached to the next model request for visual inspection.',
+  ].join('\n')
+}
+
+export function clearThreadActiveScreenshotRecall(
+  thread: AgentThread,
+  options: { now?: number } = {},
+) {
+  if (!thread.activeScreenshotRecall) {
+    return null
+  }
+
+  const recalled = thread.activeScreenshotRecall
+  delete thread.activeScreenshotRecall
+  touchThread(thread, options.now)
+  return recalled
 }
 
 export function updateThreadDeviceSnapshot(
@@ -567,6 +713,56 @@ function omitSnapshotScreenshot(snapshot: AgentDeviceSnapshot): AgentDeviceSnaps
     currentApp: snapshot.currentApp,
     deviceState: snapshot.deviceState,
   }
+}
+
+function resolveScreenshotReference(
+  references: readonly AgentScreenshotReference[],
+  action: Extract<AgentAction, { action: 'view_screenshot' }>,
+) {
+  if (action.step !== undefined) {
+    return [...references].reverse().find((reference) => reference.step === action.step)
+  }
+
+  const ref = action.ref?.trim()
+  if (!ref) {
+    return undefined
+  }
+  const normalizedRef = normalizeScreenshotReference(ref)
+  const numericStep = parseScreenshotStepReference(ref)
+
+  return [...references]
+    .reverse()
+    .find(
+      (reference) =>
+        normalizeScreenshotReference(reference.id) === normalizedRef ||
+        normalizeScreenshotReference(reference.title) === normalizedRef ||
+        (numericStep !== null && reference.step === numericStep),
+    )
+}
+
+function screenshotReferenceIdForStep(step: number) {
+  return `step-${step}`
+}
+
+function parseScreenshotStepReference(ref: string) {
+  const match = ref.trim().match(/(?:^|[#\s_-])(\d+)(?:$|\D)/)
+  return match ? Number(match[1]) : null
+}
+
+function normalizeScreenshotReference(ref: string) {
+  return ref.trim().toLowerCase().replace(/[\s_#]+/g, '-')
+}
+
+function formatRequestedScreenshotReference(
+  action: Extract<AgentAction, { action: 'view_screenshot' }>,
+) {
+  return action.ref ?? (action.step === undefined ? '' : `step-${action.step}`)
+}
+
+function cloneValue<Value>(value: Value): Value {
+  return typeof structuredClone === 'function'
+    ? structuredClone(value)
+    : (JSON.parse(JSON.stringify(value)) as Value)
 }
 
 function createId(prefix: string) {

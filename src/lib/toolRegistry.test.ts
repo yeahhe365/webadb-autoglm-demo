@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DeviceBackend } from '../adapters/deviceTypes'
+import { createAgentThread, recordThreadScreenshot } from './agentThread'
 import { createDefaultActionToolRegistry } from './toolRegistry'
 
 function fakeDevice(): DeviceBackend & { executed: string[] } {
@@ -49,6 +50,9 @@ describe('ActionToolRegistry', () => {
     expect(signatures.paste.parameters).toEqual({})
     expect(signatures.custom_tool.parameters.tool).toEqual(
       expect.objectContaining({ required: true, type: 'string' }),
+    )
+    expect(signatures.view_screenshot.parameters.step).toEqual(
+      expect.objectContaining({ required: false, type: 'number' }),
     )
     expect(signatures.sequence.parameters.actions).toEqual(
       expect.objectContaining({ required: true, type: 'list' }),
@@ -310,6 +314,68 @@ describe('ActionToolRegistry', () => {
     expect(result.toolName).toBe('custom_tool')
     expect(result.summary).toContain('Order 123 is ready.')
     expect(result.summary).toContain('"id": "123"')
+    expect(device.executed).toEqual([])
+  })
+
+  it('recalls stored screenshots without touching the device', async () => {
+    const device = fakeDevice()
+    const session = createAgentThread('Compare old screen')
+    recordThreadScreenshot(session, {
+      step: 3,
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome', packageName: 'com.android.chrome' },
+      screenshot: {
+        dataUrl: 'data:image/png;base64,old',
+        modelDataUrl: 'data:image/png;base64,old-model',
+        modelScreen: { width: 540, height: 1200 },
+        screen: { width: 1080, height: 2400 },
+      },
+      now: 1000,
+    })
+    const registry = createDefaultActionToolRegistry()
+
+    const result = await registry.execute(
+      { action: 'view_screenshot', step: 3 },
+      { device, screenshotRecallThread: session },
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.toolName).toBe('view_screenshot')
+    expect(result.summary).toContain('Recalled screenshot step-3')
+    expect(session.activeScreenshotRecall).toEqual(
+      expect.objectContaining({
+        id: 'step-3',
+        screenshot: expect.objectContaining({ dataUrl: 'data:image/png;base64,old-model' }),
+      }),
+    )
+    expect(device.executed).toEqual([])
+  })
+
+  it('blocks screenshot recall when that action tool is disabled', async () => {
+    const device = fakeDevice()
+    const session = createAgentThread('Compare old screen')
+    recordThreadScreenshot(session, {
+      step: 1,
+      currentApp: 'Chrome',
+      deviceState: { app: 'Chrome' },
+      screenshot: {
+        dataUrl: 'data:image/png;base64,old',
+        screen: { width: 1080, height: 2400 },
+      },
+      now: 1000,
+    })
+    const registry = createDefaultActionToolRegistry(['view_screenshot'])
+
+    expect(registry.getSignatures()).not.toHaveProperty('view_screenshot')
+
+    const result = await registry.execute(
+      { action: 'view_screenshot', step: 1 },
+      { device, screenshotRecallThread: session },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.summary).toContain('disabled')
+    expect(session.activeScreenshotRecall).toBeUndefined()
     expect(device.executed).toEqual([])
   })
 

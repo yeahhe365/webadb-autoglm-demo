@@ -158,6 +158,7 @@ function buildProtocolInstructions(actionProtocol: ActionProtocol) {
       'do(action="Wait", duration="1 seconds")',
       'do(action="Take_over", message="what the human must do")',
       'do(action="Note", message="short observation")',
+      'view_screenshot(ref="step-3")',
       'type_secret(secret_id="local-secret-id", clear=True)',
       'custom_tool(tool="tool_name")',
       'finish(message="what was completed")',
@@ -171,7 +172,7 @@ function buildProtocolInstructions(actionProtocol: ActionProtocol) {
       '<function_calls><invoke name="click_at"><parameter name="x">100</parameter><parameter name="y">200</parameter></invoke></function_calls>',
       'A block may include multiple <invoke> items; they execute sequentially in order.',
       'Supported mobilerun-style tools:',
-      'open_app(text), open_url(url), click_at(x,y), click_area(x1,y1,x2,y2), long_press_at(x,y), swipe(coordinate,coordinate2,duration), type_text(text,clear), set_clipboard(text), paste(), system_button(button), wait(duration), remember(information), type_secret(secret_id,clear), custom_tool(tool,input), complete(success,message).',
+      'open_app(text), open_url(url), click_at(x,y), click_area(x1,y1,x2,y2), long_press_at(x,y), swipe(coordinate,coordinate2,duration), type_text(text,clear), set_clipboard(text), paste(), system_button(button), wait(duration), remember(information), view_screenshot(ref,step), type_secret(secret_id,clear), custom_tool(tool,input), complete(success,message).',
       'Use multiple invokes only for short, visible, stable action chains. Prefer a later observation when an action changes the screen.',
       'Use screenshot pixel coordinates for click_at, click_area, long_press_at, and swipe coordinates.',
     ]
@@ -195,6 +196,7 @@ function buildProtocolInstructions(actionProtocol: ActionProtocol) {
     '{"action":"set_clipboard","text":"Text to paste later","reason":"short reason"}',
     '{"action":"paste","reason":"short reason"}',
     '{"action":"custom_tool","tool":"tool_name","input":{"key":"value"},"reason":"short reason"}',
+    '{"action":"view_screenshot","ref":"step-3","step":number,"reason":"short reason"}',
     '{"action":"key","key":"BACK|HOME|ENTER|POWER|APP_SWITCH|MENU","reason":"short reason"}',
     '{"action":"back","reason":"short reason"}',
     '{"action":"home","reason":"short reason"}',
@@ -210,7 +212,7 @@ function buildProtocolInstructions(actionProtocol: ActionProtocol) {
     [
       'Mobilerun-compatible aliases are accepted when needed:',
       'click_at, click_area, long_press_at, type_text, system_button, open_app, remember, complete,',
-      'type_secret, custom_tool; swipe may use coordinate, coordinate2, and duration seconds.',
+      'view_screenshot, type_secret, custom_tool; swipe may use coordinate, coordinate2, and duration seconds.',
     ].join(' '),
   ]
 }

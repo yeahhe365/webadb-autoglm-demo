@@ -1,7 +1,9 @@
 .sensitive-action-dialog-page {
   align-items: center;
-  background: color-mix(in srgb, var(--overlay) 92%, transparent);
-  backdrop-filter: blur(10px);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--warn) 12%, transparent), transparent 42%),
+    color-mix(in srgb, var(--overlay) 92%, transparent);
+  backdrop-filter: blur(16px) saturate(1.1);
   bottom: 0;
   display: flex;
   justify-content: center;
@@ -17,13 +19,14 @@
 .sensitive-action-dialog-panel {
   --sensitive-action-dialog-padding: 20px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg-elevated) 42%, transparent), transparent),
-    var(--panel-bg);
-  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg-elevated) 64%, transparent), transparent 220px),
+    var(--panel-glass);
+  border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
   border-radius: 8px;
   box-shadow:
-    0 32px 90px color-mix(in srgb, var(--shadow-strong) 86%, transparent),
-    0 1px 0 color-mix(in srgb, var(--on-primary) 22%, transparent) inset;
+    0 34px 96px color-mix(in srgb, var(--shadow-strong) 84%, transparent),
+    0 1px 0 color-mix(in srgb, var(--on-primary) 28%, transparent) inset;
+  backdrop-filter: blur(18px) saturate(1.08);
   display: grid;
   gap: 16px;
   max-height: min(calc(100vh - 48px), 620px);
@@ -74,8 +77,8 @@
 
 .sensitive-action-dialog-preview {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 34%, transparent), transparent),
-    var(--subtle-bg);
+    linear-gradient(180deg, color-mix(in srgb, var(--on-primary) 12%, transparent), transparent),
+    color-mix(in srgb, var(--subtle-bg) 82%, var(--panel-bg));
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 8px;
   display: grid;
@@ -97,7 +100,7 @@
 }
 
 .sensitive-action-dialog-actions {
-  background: linear-gradient(180deg, transparent, var(--panel-bg) 18px);
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--panel-bg) 94%, transparent) 18px);
   bottom: calc(var(--sensitive-action-dialog-padding) * -1);
   display: grid;
   gap: 8px;

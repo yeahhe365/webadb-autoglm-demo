@@ -56,24 +56,16 @@ export function AgentStepCard({ copy, isActive, turn }: AgentStepCardProps) {
       <LazyMarkdownContent className="agent-step-summary" content={stepSummary} />
       <div className="agent-step-quick-meta" aria-label={copy.stepDetails}>
         <span className="agent-step-chip" title={copy.stepTiming(turn.timing.totalMs)}>
-          {turn.timing.totalMs} ms
+          {formatStepTimingShort(turn.timing.totalMs, copy)}
         </span>
-        <span
-          className="agent-step-chip"
-          title={`${copy.currentApp}: ${currentAppLabel}`}
-        >
-          {currentAppLabel}
-        </span>
-        {turn.toolName ? (
-          <span className="agent-step-chip" title={`${copy.stepTool}: ${turn.toolName}`}>
-            {turn.toolName}
-          </span>
-        ) : null}
       </div>
 
       <LazyDetails className="agent-step-details" summary={copy.stepDetails}>
         <div className="agent-step-details-grid">
           <span>{copy.stepTiming(turn.timing.totalMs)}</span>
+          {turn.timing.executionMs !== undefined ? (
+            <span>{copy.stepExecutionTiming(turn.timing.executionMs)}</span>
+          ) : null}
           <span>
             {copy.currentApp}: {currentAppLabel}
           </span>
@@ -150,6 +142,14 @@ function formatStepResult(turn: AgentTurn, copy: AppCopy) {
     return { text: turn.action.reason ?? turn.action.message, isPending: false }
   }
   return { text: copy.stepNoResult, isPending: true }
+}
+
+function formatStepTimingShort(totalMs: number, copy: AppCopy) {
+  const seconds = Math.max(0, Math.round(totalMs / 1000))
+  if (totalMs > 0 && seconds === 0) {
+    return copy.stepTimingLessThanSecond
+  }
+  return copy.stepTimingSeconds(seconds)
 }
 
 function formatStepSummary(turn: AgentTurn) {
